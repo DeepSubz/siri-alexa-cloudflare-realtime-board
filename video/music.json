@@ -1,0 +1,8 @@
+[
+  {"file": "assets/music/the_mountain-infographic-technology-167600.mp3", "from": "intro", "to": "world", "tail": 2, "vol": 0.11, "fadeIn": 2.0, "fadeOut": 4, "max": 96},
+  {"file": "assets/music/the_mountain-ambient-technology-133250.mp3", "from": "file", "to": "guards", "lead": -1, "tail": 2, "vol": 0.075, "fadeIn": 3, "fadeOut": 4, "max": 128},
+  {"file": "assets/music/the_mountain-infographic-technology-167600.mp3", "from": "object", "to": "reply", "lead": -1, "tail": 2, "vol": 0.11, "fadeIn": 3, "fadeOut": 4, "max": 96},
+  {"file": "assets/music/the_mountain-ambient-technology-133250.mp3", "from": "alexa", "to": "muse", "lead": -1, "tail": 2, "vol": 0.075, "fadeIn": 3, "fadeOut": 4, "max": 128},
+  {"file": "assets/music/the_mountain-infographic-technology-167600.mp3", "from": "safety", "to": "alive", "lead": -1, "tail": 2, "vol": 0.11, "fadeIn": 3, "fadeOut": 4, "max": 96},
+  {"file": "assets/music/the_mountain-ambient-technology-133250.mp3", "from": "patterns", "to": "end", "lead": -1, "vol": 0.075, "fadeIn": 3, "fadeOut": 5, "max": 128}
+]

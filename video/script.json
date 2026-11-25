@@ -1,0 +1,481 @@
+{
+ "voices": {
+  "nar": "A confident, warm male narrator in his late thirties with a rich, deep, polished documentary voice. Measured pace, crisp diction, calm authority, quietly impressed, like a premium technology keynote film. Studio-quality recording, no music.",
+  "mom": "A warm, friendly woman in her late thirties speaking casually to her phone in a kitchen in the morning. Natural, relaxed, slightly hurried. Clear studio recording.",
+  "asst1": "A calm, natural adult female voice assistant with a low-to-medium pitch and a warm, smooth, understated tone. Relaxed, unhurried pace, gentle and professional, quietly confident. Not bright, not perky, not high-pitched, no exaggerated intonation. Clear studio recording.",
+  "teen": "A relaxed teenage boy, about fifteen, speaking casually to a smart speaker in the evening. Natural and a little bored. Clear studio recording.",
+  "asst2": "A calm, clear, friendly female smart-speaker assistant voice. Warm, steady, polite and efficient. Clear studio recording."
+ },
+ "scenes": [
+  {
+   "id": "intro",
+   "lines": [
+    [
+     "nar",
+     "This is a demonstration of system architecture."
+    ],
+    [
+     "nar",
+     "Four ecosystems that were never designed to talk to each other: Apple, Amazon, Meta, and Cloudflare's edge network."
+    ],
+    [
+     "nar",
+     "One event travels across all of them, in near real time, and lands in exactly the same place, every time."
+    ],
+    [
+     "nar",
+     "The project carrying that event is a simple family board. The architecture underneath it is the real subject."
+    ]
+   ]
+  },
+  {
+   "id": "hook",
+   "lines": [
+    [
+     "nar",
+     "Seven forty in the morning."
+    ],
+    [
+     "nar",
+     "A sentence is spoken to a phone in the kitchen."
+    ],
+    [
+     "nar",
+     "Moments later, it is written on a post-it note, on the living room wall."
+    ],
+    [
+     "nar",
+     "No app was opened. Nobody typed a thing."
+    ],
+    [
+     "nar",
+     "Here is how that happens, and how six very different systems were taught to work together, like clockwork."
+    ]
+   ]
+  },
+  {
+   "id": "world",
+   "lines": [
+    [
+     "nar",
+     "Here is the architecture, end to end."
+    ],
+    [
+     "nar",
+     "On the left are the voices: Apple's Siri, Amazon's Alexa, and Meta's AI assistant Muse, which reads the family's calendar and mail."
+    ],
+    [
+     "nar",
+     "In the middle is Cloudflare's global edge network."
+    ],
+    [
+     "nar",
+     "On the right, every screen in the house."
+    ],
+    [
+     "nar",
+     "And at the very centre of it all, one small text file."
+    ]
+   ]
+  },
+  {
+   "id": "file",
+   "lines": [
+    [
+     "nar",
+     "Everything begins with plain Markdown."
+    ],
+    [
+     "nar",
+     "Two hash signs start a group, and every group gets its own colour of paper."
+    ],
+    [
+     "nar",
+     "A dash and a pair of empty brackets is a task. Put an x inside, and it is crossed out."
+    ],
+    [
+     "nar",
+     "Any person can read it. Any AI can write it. And the wall needs no AI at all to understand it."
+    ]
+   ]
+  },
+  {
+   "id": "siri",
+   "lines": [
+    [
+     "nar",
+     "Let's follow one sentence."
+    ],
+    [
+     "mom",
+     "Family Board."
+    ],
+    [
+     "asst1",
+     "What should I update?"
+    ],
+    [
+     "mom",
+     "Add dentist Thursday at four."
+    ]
+   ]
+  },
+  {
+   "id": "request",
+   "lines": [
+    [
+     "nar",
+     "The shortcut sends one secure request across the internet, to a Cloudflare worker."
+    ],
+    [
+     "nar",
+     "It carries a single field: the words that were spoken."
+    ],
+    [
+     "nar",
+     "A private write key rides in the header, and the worker checks it in constant time, so even the speed of a rejection gives nothing away."
+    ]
+   ]
+  },
+  {
+   "id": "ai",
+   "lines": [
+    [
+     "nar",
+     "Next, the worker gathers context from the board itself."
+    ],
+    [
+     "nar",
+     "Every group. Every task. The voice changes from the last six hours, and any question it asked in the last three minutes."
+    ],
+    [
+     "nar",
+     "All of it goes to Workers AI: Meta's Llama three point three, seventy billion parameters, running on Cloudflare's own GPUs."
+    ],
+    [
+     "nar",
+     "The model must answer in a strict JSON shape: an action, a group, a task, and a question, if it is not sure."
+    ]
+   ]
+  },
+  {
+   "id": "guards",
+   "lines": [
+    [
+     "nar",
+     "But the AI never gets the final word."
+    ],
+    [
+     "nar",
+     "Plain code checks every answer."
+    ],
+    [
+     "nar",
+     "Anything about money is refused."
+    ],
+    [
+     "nar",
+     "Tasks are trimmed to thirty-nine characters, so they always fit on a note."
+    ],
+    [
+     "nar",
+     "And before anything is crossed off, exactly one matching task must really exist. If not, the board simply asks: which one?"
+    ]
+   ]
+  },
+  {
+   "id": "object",
+   "lines": [
+    [
+     "nar",
+     "Then, the heart of the system: a Cloudflare Durable Object, called Board."
+    ],
+    [
+     "nar",
+     "There is exactly one of it, anywhere in the world, so two people can never overwrite each other."
+    ],
+    [
+     "nar",
+     "It adds one line, and leaves every other byte exactly as it was."
+    ],
+    [
+     "nar",
+     "It saves the file to its own built-in SQLite database, and remembers the change, so that undo just works."
+    ]
+   ]
+  },
+  {
+   "id": "push",
+   "lines": [
+    [
+     "nar",
+     "Now the clockwork turns."
+    ],
+    [
+     "nar",
+     "The same object is holding an open WebSocket to every screen in the house."
+    ],
+    [
+     "nar",
+     "It pushes the whole file down every one of them, at the same moment."
+    ],
+    [
+     "nar",
+     "No polling. No refresh button. The note simply appears."
+    ]
+   ]
+  },
+  {
+   "id": "tv",
+   "lines": [
+    [
+     "nar",
+     "On the living room TV, the board reads the file, and finds the Appointments group."
+    ],
+    [
+     "nar",
+     "It writes the new line in handwriting, on a three-dimensional sheet of paper, pinned to the wall."
+    ],
+    [
+     "nar",
+     "It even understands dates. Today's tasks are highlighted and stamped. Overdue to-dos turn red. Past events quietly fade."
+    ]
+   ]
+  },
+  {
+   "id": "reply",
+   "lines": [
+    [
+     "nar",
+     "Back in the kitchen, the phone reads the answer aloud."
+    ],
+    [
+     "asst1",
+     "Added Dentist, Thursday 4 PM, to Appointments. Anything else?"
+    ],
+    [
+     "mom",
+     "No, that's all."
+    ],
+    [
+     "nar",
+     "The conversation carries on until you say you're done. And if you say undo, the board remembers exactly what you meant."
+    ]
+   ]
+  },
+  {
+   "id": "alexa",
+   "lines": [
+    [
+     "nar",
+     "Six in the evening. Another family member, and a completely different ecosystem."
+    ],
+    [
+     "teen",
+     "Open Post It Board."
+    ],
+    [
+     "asst2",
+     "What should I update on the family board?"
+    ],
+    [
+     "teen",
+     "Cross off the math packet."
+    ]
+   ]
+  },
+  {
+   "id": "alexapath",
+   "lines": [
+    [
+     "nar",
+     "Amazon's cloud turns that speech into an intent, called Done Intent, holding the words: the math packet."
+    ],
+    [
+     "nar",
+     "Then it signs the request with its own certificate."
+    ],
+    [
+     "nar",
+     "The worker verifies everything. The certificate really comes from Amazon. Its name is echo API dot amazon dot com. The RSA signature matches."
+    ],
+    [
+     "nar",
+     "The request is less than a hundred and fifty seconds old. And the skill ID belongs to this family."
+    ],
+    [
+     "nar",
+     "Only then does the intent become a sentence, and travel through exactly the same brain that Siri uses."
+    ]
+   ]
+  },
+  {
+   "id": "alexadone",
+   "lines": [
+    [
+     "nar",
+     "On every screen, a pen stroke crosses out the math packet."
+    ],
+    [
+     "asst2",
+     "Crossed off Math packet in School. Anything else?"
+    ],
+    [
+     "nar",
+     "Two rival ecosystems. One shared memory."
+    ]
+   ]
+  },
+  {
+   "id": "muse",
+   "lines": [
+    [
+     "nar",
+     "Some tasks are never spoken at all."
+    ],
+    [
+     "nar",
+     "Meta's AI assistant Muse reads Apple Calendar, Gmail and Apple Mail: appointments, school notices, deliveries."
+    ],
+    [
+     "nar",
+     "It rewrites the whole file by the house rules, and uploads it in a single request."
+    ],
+    [
+     "nar",
+     "The worker checks the key, the format, the encoding and the size. The object saves it, and every screen has it, instantly."
+    ]
+   ]
+  },
+  {
+   "id": "safety",
+   "lines": [
+    [
+     "nar",
+     "Every screen also carries a safety net."
+    ],
+    [
+     "nar",
+     "If the live connection ever drops, the board checks every two seconds, and reconnects with a growing wait: one second, two, four, up to a minute."
+    ],
+    [
+     "nar",
+     "While connected, it still checks once a minute, just in case."
+    ],
+    [
+     "nar",
+     "A keep-alive ping every thirty seconds is answered by Cloudflare itself, without waking the object, so a quiet screen costs nothing."
+    ]
+   ]
+  },
+  {
+   "id": "clock",
+   "lines": [
+    [
+     "nar",
+     "Every part runs to a clock."
+    ],
+    [
+     "nar",
+     "Three minutes to answer a follow-up question. Five minutes between lighting updates."
+    ],
+    [
+     "nar",
+     "Three hours before a finished note peels off the wall. Six hours of voice memory."
+    ],
+    [
+     "nar",
+     "And at midnight, every note is read again, for what is due today."
+    ]
+   ]
+  },
+  {
+   "id": "alive",
+   "lines": [
+    [
+     "nar",
+     "The wall itself is alive."
+    ],
+    [
+     "nar",
+     "It follows the real sun: amber at sunrise and sunset, and a lamp-lit night that dims after ten."
+    ],
+    [
+     "nar",
+     "Autumn leaves fall. Snow arrives for Christmas, and hearts for Valentine's week."
+    ],
+    [
+     "nar",
+     "Butterflies visit by day, and land on the notes, shadows and all."
+    ],
+    [
+     "nar",
+     "And it only redraws when something moves, so the graphics chip can rest."
+    ]
+   ]
+  },
+  {
+   "id": "patterns",
+   "lines": [
+    [
+     "nar",
+     "Look closer, and the same architectural patterns appear again and again."
+    ],
+    [
+     "nar",
+     "Event driven. Every change begins as a single event, from any ecosystem."
+    ],
+    [
+     "nar",
+     "A single writer. One Durable Object puts every change in order, so the state is always consistent."
+    ],
+    [
+     "nar",
+     "Compute at the edge. No servers to manage, and always close to the person speaking."
+    ],
+    [
+     "nar",
+     "AI with guardrails. The model interprets, but deterministic code decides."
+    ],
+    [
+     "nar",
+     "Push, not poll. State flows to every screen the moment it changes, with polling only as a fallback."
+    ],
+    [
+     "nar",
+     "And zero trust between vendors. A shared secret for Apple and Muse, signed certificates for Amazon."
+    ]
+   ]
+  },
+  {
+   "id": "machine",
+   "lines": [
+    [
+     "nar",
+     "Step back, and this is the whole machine."
+    ],
+    [
+     "nar",
+     "Two voice assistants. An AI collector. A serverless edge worker. A seventy billion parameter language model. One strongly consistent object, with its own database. And a live line to every screen."
+    ],
+    [
+     "nar",
+     "Every piece is secured. Every piece can be replaced. And all of them turn together."
+    ]
+   ]
+  },
+  {
+   "id": "end",
+   "lines": [
+    [
+     "nar",
+     "One event. Four ecosystems. Near real time."
+    ],
+    [
+     "nar",
+     "A system architecture demonstration, designed, integrated, and engineered end to end."
+    ]
+   ]
+  }
+ ]
+}

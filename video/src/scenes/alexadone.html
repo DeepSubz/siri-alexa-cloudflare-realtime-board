@@ -1,0 +1,56 @@
+<!--TIMING {"pre": 0.6, "post": 2.0, "gaps": {"2": 0.8}} -->
+<!--SFX [["whoosh-short", "0.1", 0.35], ["pop", "c(0)+1.6", 0.4], ["ping", "c(1)-0.1", 0.2], ["impact-bass-1", "c(2)+0.3", 0.3]] -->
+<style>
+#root { background: #e7ebf0; }
+.pane { position: absolute; width: 860px; height: 440px; border-radius: 26px; overflow: hidden; background: #111; box-shadow: 0 24px 48px rgba(20,24,32,.2); border: 14px solid #15171c; }
+.pane .in { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; }
+.lbl { position: absolute; font: 700 34px Outfit; color: #18202c; display: flex; gap: 12px; align-items: center; }
+.lbl i { width: 18px; height: 18px; border-radius: 50%; background: var(--c); }
+.bub { position: absolute; left: 50%; top: 830px; transform: translateX(-50%); padding: 26px 40px; border-radius: 36px; background: #0f9a92; color: #fff; font: 700 46px Outfit; white-space: nowrap; box-shadow: 0 24px 48px rgba(0,0,0,.25); }
+.merge { position: absolute; inset: 0; background: #e7ebf0; display: grid; place-items: center; }
+.eco { position: absolute; top: 430px; padding: 26px 44px; border-radius: 26px; background: #fff; font: 800 54px Outfit; box-shadow: 0 18px 36px rgba(20,24,32,.16); border: 5px solid var(--c); }
+.mem { position: absolute; left: 760px; top: 360px; width: 400px; height: 340px; background: linear-gradient(170deg,#fdf1b3,#fbe88f 60%,#f3dc78); box-shadow: 0 30px 50px -16px rgba(60,40,10,.45); display: grid; place-items: center; text-align: center; font: 62px/1.1 'Bradley Hand', cursive; color: #1f2a44; }
+</style>
+<body>
+  <div class="lbl" style="--c:#69b87c;left:110px;top:40px"><i></i>Living-room TV</div>
+  <div class="lbl" style="--c:#c5ccd6;left:990px;top:40px"><i></i>Laptop</div>
+  <div class="lbl" style="--c:#2f6ff2;left:110px;top:560px"><i></i>Phone browser</div>
+  <div class="lbl" style="--c:#0f9a92;left:990px;top:560px"><i></i>Echo Show</div>
+  <div class="pane" id="ad-p0" style="left:96px;top:96px"><div class="in"></div></div>
+  <div class="pane" id="ad-p1" style="left:976px;top:96px"><div class="in"></div></div>
+  <div class="pane" id="ad-p2" style="left:96px;top:616px"><div class="in"></div></div>
+  <div class="pane" id="ad-p3" style="left:976px;top:616px"><div class="in"></div></div>
+  <div class="bub" id="ad-bub">“Crossed off Math packet in School. Anything else?”</div>
+  <div class="merge" id="ad-merge" data-layout-allow-occlusion>
+    <div class="eco" id="ad-a" style="--c:#2f6ff2;left:180px">Apple</div>
+    <div class="eco" id="ad-z" style="--c:#0f9a92;right:180px">Amazon</div>
+    <div class="mem" id="ad-mem">One shared<br>memory</div>
+  </div>
+</body>
+<script>
+const strikes = [];
+for (let i = 0; i < 4; i++) {
+  const inner = $('#ad-p' + i + ' .in');
+  const B = board(inner, 1920, 1080);
+  strikes.push(B.notes[1].lines[0].strike);
+  gsap.set(B.notes[1].lines[0].strike, { scaleX: 0 });
+  // frame the School note: centre (972, 400) at zoom 1.7, inside an 832 x 412 pane
+  const z = 0.85 + (i % 2) * 0.05;
+  gsap.set(inner, { transformOrigin: '0 0', scale: z, x: 416 - 972 * z, y: 206 - 400 * z });
+}
+for (let i = 0; i < 4; i++) show(tl, $('#ad-p' + i), 0.1 + i * 0.12, 0.6);
+strikes.forEach(s => tl.fromTo(s, { scaleX: 0 }, { scaleX: 1, duration: 0.55, ease: 'power2.inOut' }, at(0) + 1.4));
+const c0 = caption(ROOT, 'Same moment, every screen', { top: 470, size: 56 });
+gsap.set(c0, { left: '50%', xPercent: -50 });
+wordsIn(tl, c0, at(0) + 2.4);
+out(tl, c0, at(1) - 0.3);
+show(tl, $('#ad-bub'), at(1), 0.5, { y: 20 });
+out(tl, $('#ad-bub'), at(2) - 0.6); ROOT.querySelectorAll('.lbl').forEach(l => out(tl, l, at(2) - 0.6));
+const mg = $('#ad-merge');
+gsap.set(mg, { clipPath: 'circle(0px at 960px 540px)' });
+tl.fromTo(mg, { clipPath: 'circle(0px at 960px 540px)' }, { clipPath: 'circle(1200px at 960px 540px)', duration: 0.8, ease: 'power3.in' }, at(2) - 0.4);
+show(tl, $('#ad-a'), at(2) + 0.2, 0.6, { x: -80 }); show(tl, $('#ad-z'), at(2) + 0.2, 0.6, { x: 80 });
+tl.fromTo('#ad-a', { x: 0 }, { x: 250, opacity: 0, duration: 0.7, ease: 'power3.in', immediateRender: false }, at(2) + 1.4);
+tl.fromTo('#ad-z', { x: 0 }, { x: -250, opacity: 0, duration: 0.7, ease: 'power3.in', immediateRender: false }, at(2) + 1.4);
+show(tl, $('#ad-mem'), at(2) + 1.8, 0.7, { rotation: -8, scale: 0.6 });
+</script>

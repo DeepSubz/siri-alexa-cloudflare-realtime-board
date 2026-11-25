@@ -1,0 +1,50 @@
+<!--TIMING {"pre": 0.8, "gap": 0.9, "post": 1.6} -->
+<!--SFX [["whoosh", "c(0)+0.6", 0.4], ["typing", "c(0)+2.6", 0.25], ["pop", "c(1)+0.4", 0.35], ["whoosh-short", "c(2)-0.3", 0.35], ["ping", "c(2)+6.2", 0.3]] -->
+<style>
+#root { background: #e7ebf0; }
+#rq-host { position: absolute; left: 0; top: 0; }
+.hl { position: absolute; left: 0; right: 0; height: 46px; background: #2f6ff21f; border-left: 6px solid #2f6ff2; transform-origin: left center; }
+.hex { display: flex; gap: 10px; font: 600 30px 'IBM Plex Mono', monospace; }
+.hex span { width: 50px; text-align: center; padding: 4px 0; border-radius: 8px; background: #f2f4f7; }
+.scan { position: absolute; top: 70px; bottom: 70px; width: 64px; margin-left: -7px; border-radius: 12px; border: 4px solid #a1792a; }
+</style>
+<body>
+  <div id="rq-host"></div>
+</body>
+<script>
+const W = isoWorld($('#rq-host'), { prefix: 'rq' });
+W.hideFlows();
+W.setCam(tl, 'phone', 1.5, -420, 120);
+W.focusOnly(tl, ['phone', 'shortcut', 'worker', 'vault'], ['siri', 'key'], 0, 0.01);
+W.move(tl, [3, 20, 4], 0.95, at(0) + 0.2, 2.2, -360, 60);
+W.draw(tl, 'siri', at(0) + 0.6, 1.6);
+W.pk(tl, 'siri', at(0) + 0.8, 1.6, { r: 14 });
+const req = card(ROOT, 1080, 170, 760, 'HTTPS request', COL.siri, '');
+show(tl, req.el, at(0) + 1.8, 0.7, { x: 60 });
+typeHTML(tl, req.bd, code('POST /api/tasks/command\nAuthorization: Bearer ••••••••\nContent-Type: application/json\n\n{"text": "Add dentist\n         Thursday at four"}'), at(0) + 2.4, 1.8);
+const hl = HT('div', { class: 'hl' }, req.bd); hl.style.top = '244px'; hl.style.height = '92px';
+tl.fromTo(hl, { scaleX: 0 }, { scaleX: 1, duration: 0.5, ease: 'expo.out' }, at(1) + 0.3);
+const cap1 = caption(ROOT, 'One field: the words you said', { bottom: 80, size: 56 });
+wordsIn(tl, cap1, at(1) + 0.4);
+out(tl, cap1, end(1) + 0.4);
+// the key check
+out(tl, req.el, at(2) - 0.4, 0.35);
+W.move(tl, [5.8, 17, 2.2], 2.4, at(2) - 0.3, 1.8, -420, 60);
+W.draw(tl, 'key', at(2) + 0.6, 0.8);
+W.pk(tl, 'key', at(2) + 1.0, 0.9, { r: 9 });
+W.pk(tl, 'key', at(2) + 2.2, 0.9, { r: 9, reverse: true });
+const cmp = card(ROOT, 980, 200, 840, 'Constant-time key check', COL.key, '', { mono: false, fs: 30 });
+show(tl, cmp.el, at(2) + 0.8, 0.7, { x: 60 });
+const mk = (label, bytes) => { const row = HT('div', { css: 'margin:10px 0 18px' }, cmp.bd); HT('div', { css: "font:600 28px Inter;color:#5b6576;margin-bottom:8px", text: label }, row); const hx = HT('div', { class: 'hex' }, row); bytes.forEach(b => HT('span', { text: b }, hx)); return hx; };
+mk('SHA-256 of the key that arrived', ['a9', '3f', '71', '0c', 'e2', '58', 'b4', '19', '6d', '02', 'c7', '…']);
+mk('SHA-256 of the stored secret', ['a9', '3f', '71', '0c', 'e2', '58', 'b4', '19', '6d', '02', 'c7', '…']);
+const verdict = HT('div', { css: "font:700 34px Outfit;color:#0f8a5f;margin-top:6px", text: 'Every byte compared, every time ✓' }, cmp.bd);
+const scan = HT('div', { class: 'scan' }, cmp.bd);
+tl.fromTo(scan, { x: 26, opacity: 0 }, { opacity: 1, duration: 0.1 }, at(2) + 1.6);
+tl.fromTo(scan, { x: 26 }, { x: 26 + 60 * 11, duration: 3.6, ease: 'none', immediateRender: false }, at(2) + 1.6);
+tl.fromTo(scan, { opacity: 1 }, { opacity: 0, duration: 0.2, immediateRender: false }, at(2) + 5.3);
+gsap.set(verdict, { opacity: 0 });
+tl.fromTo(verdict, { opacity: 0 }, { opacity: 1, duration: 0.3 }, at(2) + 5.4);
+const cap2 = caption(ROOT, 'Even a rejection takes the same time', { bottom: 80, size: 52 });
+wordsIn(tl, cap2, at(2) + 6.0);
+</script>

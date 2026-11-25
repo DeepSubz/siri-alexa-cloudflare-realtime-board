@@ -1,0 +1,37 @@
+<!--TIMING {"pre": 0.8, "gap": 0.9, "post": 2.4} -->
+<!--SFX [["whoosh-cinematic", "0", 0.25], ["pop", "c(1)+0.3", 0.3], ["pop", "c(1)+2.0", 0.3], ["pop", "c(1)+3.6", 0.3], ["pop", "c(1)+5.6", 0.3], ["pop", "c(1)+8.2", 0.3], ["pop", "c(1)+11.2", 0.3], ["riser", "c(2)-6.5", 0.25]] -->
+<style>
+#root { background: #e7ebf0; }
+#mc-host { position: absolute; left: 0; top: 0; }
+</style>
+<body>
+  <div id="mc-host"></div>
+</body>
+<script>
+const W = isoWorld($('#mc-host'), { prefix: 'mc' });
+W.setCam(tl, 'worker', 2.4, 0, 60);
+W.move(tl, 'all', 0.97, at(0) + 0.2, 3.2, 0, 40, 'power2.inOut');
+const t0 = caption(ROOT, 'The whole machine', { top: 60, size: 80, bare: true });
+wordsIn(tl, t0, at(0) + 0.6);
+// packets circulate on every path for the rest of the scene
+const ids = Object.keys(W.flows).filter(id => !W.flows[id].reply);
+let k = 0;
+for (let t = at(0) + 1.0; t < DUR - 1.2; t += 0.55) { const id = ids[k++ % ids.length]; W.pk(tl, id, t, 1.1, { r: 11 }); }
+const fin = { x: 960 - W.W * W.cam.scale / 2 };
+const cam = W.camAt('all', 0.97, 0, 40);
+const scr = p => { const [x, y] = W.px(p); return [cam.x + x * cam.scale, cam.y + y * cam.scale]; };
+const items = [
+  ['Two voice assistants', COL.siri, [4.5, 30, 8], at(1) + 0.3],
+  ['Meta\'s AI assistant Muse', COL.muse, [-8, 14.5, 7], at(1) + 2.0],
+  ['A serverless edge worker', COL.zCf, [8.5, 13.5, 6.5], at(1) + 3.6],
+  ['A 70B language model', COL.ai, [8, 5, 6], at(1) + 5.6],
+  ['One consistent object + database', COL.write, [20, 14, 8], at(1) + 8.2],
+  ['A live line to every screen', COL.zScreen, [31, 0, 8.5], at(1) + 11.2],
+];
+const tags = items.map(([txt, c, p, t]) => { const el = tag(ROOT, txt, c, scr(p), { size: 30 }); show(tl, el, t, 0.5, { y: 16 }); return el; });
+tags.forEach(el => out(tl, el, at(2) - 0.4, 0.3));
+const a = caption(ROOT, 'Secured.', { bottom: 80, x: 110, size: 72, bare: true });
+const b = caption(ROOT, 'Replaceable.', { bottom: 80, x: 520, size: 72, bare: true });
+const c = caption(ROOT, 'In step.', { bottom: 80, x: 1060, size: 72, bare: true, color: '#e0662a' });
+wordsIn(tl, a, at(2) + 0.3); wordsIn(tl, b, at(2) + 1.8); wordsIn(tl, c, at(2) + 3.6);
+</script>

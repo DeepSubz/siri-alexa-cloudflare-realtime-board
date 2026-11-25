@@ -1,0 +1,61 @@
+<!--TIMING {"pre": 0.6, "gap": 0.8, "post": 1.4} -->
+<!--SFX [["typing", "c(0)+0.3", 0.25], ["typing", "c(1)+0.2", 0.25], ["pop", "c(1)+1.6", 0.4], ["typing", "c(2)+0.2", 0.25], ["typing", "c(2)+2.6", 0.25]] -->
+<style>
+#root { background: #e7ebf0; }
+.ed { position: absolute; left: 100px; top: 150px; width: 900px; height: 640px; background: #fff; border-radius: 24px; box-shadow: 0 30px 60px rgba(20,24,32,.18); overflow: hidden; }
+.ed .bar { height: 64px; background: #f3f5f8; display: flex; align-items: center; gap: 12px; padding: 0 24px; font: 600 28px 'IBM Plex Mono', monospace; color: #5b6576; border-bottom: 2px solid #e3e7ee; }
+.ed .bar i { width: 16px; height: 16px; border-radius: 50%; background: #d7dce4; }
+.ed .lines { padding: 26px 34px; font: 500 40px/1.6 'IBM Plex Mono', monospace; color: #18202c; white-space: pre; }
+.ed .h { color: #b25b12; font-weight: 700; } .ed .o { color: #2f6ff2; } .ed .x { color: #0f8a5f; } .ed .c { color: #8a93a3; }
+.note { position: absolute; left: 1140px; top: 200px; width: 640px; height: 520px; padding: 70px 46px 0; border-radius: 4px;
+  background: linear-gradient(170deg, #fdf1b3, #fbe88f 60%, #f3dc78); box-shadow: 0 30px 50px -16px rgba(60,40,10,.45); }
+.note .pin { position: absolute; left: 50%; top: 16px; width: 34px; height: 34px; margin-left: -17px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #ff7b6b, #c8322a 70%); box-shadow: 0 4px 6px rgba(0,0,0,.35); }
+.note .g { font: 54px 'Bradley Hand', cursive; color: #5a4320; text-decoration: underline; text-underline-offset: 10px; margin-bottom: 18px; }
+.note .l { position: relative; font: 52px/1.5 'Bradley Hand', cursive; color: #1f2a44; display: flex; gap: 18px; align-items: baseline; }
+.note .l i { flex: none; width: 26px; height: 26px; border: 4px solid #1f2a44; border-radius: 50%; }
+.note .l .st { position: absolute; left: 40px; right: 0; top: 54%; height: 6px; background: #1f2a44; border-radius: 4px; transform-origin: left center; }
+.sw { position: absolute; top: 760px; width: 190px; height: 150px; border-radius: 4px; box-shadow: 0 18px 30px -12px rgba(60,40,10,.4); padding: 22px 0 0; text-align: center; font: 36px 'Bradley Hand', cursive; color: #5a4320; }
+.arrow { position: absolute; left: 1020px; top: 420px; font: 800 90px Outfit, sans-serif; color: #e0662a; }
+</style>
+<body>
+  <div class="ed"><div class="bar"><i></i><i></i><i></i><span style="margin-left:14px">tasks.md</span></div><div class="lines" id="fl-lines"></div></div>
+  <div class="arrow" id="fl-arrow">→</div>
+  <div class="note" id="fl-note"><div class="pin"></div><div class="g" id="fl-g">Appointments</div>
+    <div class="l" id="fl-l1"><i></i><span>Dentist – Thu 4pm</span></div>
+    <div class="l" id="fl-l2" style="opacity:.8"><i></i><span>Eye test – Mon 9am</span><div class="st" id="fl-st"></div></div>
+  </div>
+  <div class="sw" id="fl-s1" style="left:1140px;background:#fbe88f">Appointments</div>
+  <div class="sw" id="fl-s2" style="left:1365px;background:#f7b6c8">School</div>
+  <div class="sw" id="fl-s3" style="left:1590px;background:#a9d4f5">Reminders</div>
+</body>
+<script>
+const box = $('#fl-lines');
+const L = [
+  ['# Family Board', 'c', at(0) + 0.3],
+  ['', '', 0],
+  ['## Appointments', 'h', at(1) + 0.2],
+  ['- [ ] Dentist – Thu 4pm', 'o', at(2) + 0.2],
+  ['- [x] Eye test – Mon 9am', 'x', at(2) + 2.6],
+  ['', '', 0],
+  ['## School', 'h', at(1) + 3.2],
+];
+L.forEach(([txt, cls, t]) => {
+  const d = HT('div', { class: cls, html: '&nbsp;' }, box);
+  if (txt) { const sp = HT('span', {}, d); d.firstChild.remove(); typeOn(tl, sp, txt, t, Math.min(1.2, txt.length * 0.05)); }
+});
+const note = $('#fl-note');
+show(tl, note, at(1) + 1.4, 0.8, { rotation: -6, y: 40 });
+tl.fromTo(note, { rotation: -6 }, { rotation: -1.2, duration: 0.8, ease: 'expo.out', immediateRender: false }, at(1) + 1.4);
+show(tl, $('#fl-arrow'), at(1) + 1.2, 0.5, { x: -30 });
+['#fl-s1', '#fl-s2', '#fl-s3'].forEach((s, i) => show(tl, $(s), at(1) + 2.6 + i * 0.45, 0.6, { y: 30 }));
+gsap.set(['#fl-l1', '#fl-l2'], { opacity: 0 });
+tl.fromTo('#fl-l1', { opacity: 0, clipPath: 'inset(0 100% 0 0)' }, { opacity: 1, clipPath: 'inset(0 0% 0 0)', duration: 1.0, ease: 'power1.inOut' }, at(2) + 1.2);
+tl.fromTo('#fl-l2', { opacity: 0, clipPath: 'inset(0 100% 0 0)' }, { opacity: 0.8, clipPath: 'inset(0 0% 0 0)', duration: 1.0, ease: 'power1.inOut' }, at(2) + 3.5);
+tl.fromTo('#fl-st', { scaleX: 0 }, { scaleX: 1, duration: 0.5, ease: 'power2.inOut' }, at(2) + 4.6);
+// the three properties
+const k = caption(ROOT, 'People read it. AI writes it.', { bottom: 70, size: 60, bare: true });
+const k2 = caption(ROOT, 'The wall needs no AI at all.', { bottom: 70, size: 60, x: 1000, color: '#e0662a', bare: true });
+['#fl-s1', '#fl-s2', '#fl-s3'].forEach(s => out(tl, $(s), at(3) - 0.3, 0.3));
+wordsIn(tl, k, at(3) + 0.1, 0.12);
+wordsIn(tl, k2, at(3) + 2.9, 0.1);
+</script>

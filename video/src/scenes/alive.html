@@ -1,0 +1,72 @@
+<!--TIMING {"pre": 0.6, "gap": 0.8, "post": 1.8} -->
+<!--SFX [["sparkle", "c(0)+0.2", 0.25], ["whoosh-short", "c(2)+0.1", 0.25], ["whoosh-short", "c(2)+2.0", 0.25], ["whoosh-short", "c(2)+3.6", 0.25], ["sparkle", "c(3)+0.4", 0.25]] -->
+<style>
+#root { background: #d9cab2; }
+#al-wall { position: absolute; inset: 0; }
+.tint { position: absolute; inset: 0; mix-blend-mode: multiply; pointer-events: none; }
+.fx { position: absolute; inset: 0; overflow: hidden; }
+.clockt { position: absolute; left: 70px; top: 40px; padding: 12px 26px; border-radius: 18px; background: rgba(255,255,255,.92); font: 800 50px Outfit; color: #18202c; }
+.leaf { position: absolute; width: 46px; height: 46px; border-radius: 0 60% 0 60%; background: linear-gradient(135deg, #e8662a, #b8361a); }
+.flake { position: absolute; width: 22px; height: 22px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 3px rgba(160,190,230,.6); }
+.heart { position: absolute; font: 800 54px Outfit; color: #e8457a; }
+.bf { position: absolute; width: 161px; height: 152px; background: url('assets/butterfly-sheet.png') 0 0 / 644px 608px no-repeat; }
+.bfs { position: absolute; width: 161px; height: 152px; background: url('assets/butterfly-sheet.png') 0 0 / 644px 608px no-repeat; filter: brightness(0) blur(6px); opacity: .28; }
+.meter { position: absolute; right: 70px; top: 40px; padding: 16px 26px; border-radius: 18px; background: rgba(255,255,255,.94); font: 700 38px Outfit; color: #18202c; display: flex; gap: 16px; align-items: center; }
+.meter b { font: 600 38px 'IBM Plex Mono'; color: #e0662a; min-width: 120px; text-align: right; }
+</style>
+<body>
+  <div id="al-wall"></div>
+  <div class="fx" id="al-fx"></div>
+  <div class="bfs" id="al-bfs"></div>
+  <div class="bf" id="al-bf"></div>
+  <div class="tint" id="al-amber" style="background:#ffb070"></div>
+  <div class="tint" id="al-night" style="background:radial-gradient(40% 50% at 50% 55%, #fff3d6 0%, #6b7aa6 60%, #2a3458 100%)"></div>
+  <div class="clockt" id="al-clock">10:00 am</div>
+  <div class="meter" id="al-meter">Frames drawn <b id="al-n">0</b></div>
+</body>
+<script>
+const B = board($('#al-wall'), 1920, 1080);
+gsap.set(['#al-amber', '#al-night'], { opacity: 0 });
+const c0 = caption(ROOT, 'The wall itself is alive', { bottom: 70, size: 68 });
+wordsIn(tl, c0, at(0));
+out(tl, c0, at(1) - 0.3);
+// the sun
+const ck = $('#al-clock');
+ck.textContent = '10:00 am';
+const LBL = [[0, '10:00 am'], [at(1) + 0.6, '6:50 am · sunrise'], [at(1) + 2.6, '5:10 pm · sunset'], [at(1) + 4.0, '9:30 pm · lamp light'], [at(1) + 5.6, '10:40 pm · bedtime'],
+  [at(2), 'October'], [at(2) + 1.8, 'December 24'], [at(2) + 3.6, 'February 12'], [at(3), '11:20 am']];
+const clk = { t: 0 };
+tl.fromTo(clk, { t: 0 }, { t: DUR, duration: DUR, ease: 'none', onUpdate: () => { let s = LBL[0][1]; for (const [tt, l] of LBL) if (clk.t >= tt) s = l; ck.textContent = s; } }, 0);
+tl.fromTo(ck, { opacity: 0 }, { opacity: 1, duration: 0.3 }, at(0) + 0.3);
+tl.fromTo('#al-amber', { opacity: 0 }, { opacity: 0.38, duration: 1.0 }, at(1) + 0.6);
+tl.fromTo('#al-amber', { opacity: 0.38 }, { opacity: 0, duration: 0.8, immediateRender: false }, at(1) + 4.0);
+tl.fromTo('#al-night', { opacity: 0 }, { opacity: 0.75, duration: 1.0 }, at(1) + 4.0);
+tl.fromTo('#al-night', { opacity: 0.75 }, { opacity: 0.95, duration: 0.8, immediateRender: false }, at(1) + 5.6);
+tl.fromTo('#al-night', { opacity: 0.95 }, { opacity: 0, duration: 1.0, immediateRender: false }, at(2) - 0.4);
+// seasons: deterministic falls
+const fx = $('#al-fx');
+let seed = 7; const R = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+const fall = (cls, txt, t0, n, dur) => { for (let i = 0; i < n; i++) {
+  const el = HT('div', { class: cls, text: txt || '' }, fx); const x = 80 + R() * 1760, dx = (R() - 0.5) * 300, st = t0 + R() * 1.2;
+  tl.fromTo(el, { x, y: -80, rotation: R() * 180, opacity: 1 }, { x: x + dx, y: 1160, rotation: R() * 720 - 360, duration: dur, ease: 'none' }, st);
+  gsap.set(el, { opacity: 0 }); tl.set(el, { opacity: 0 }, st + dur);
+} };
+fall('leaf', '', at(2), 14, 3.4);
+fall('flake', '', at(2) + 1.8, 30, 3.6);
+fall('heart', '♥', at(2) + 3.6, 12, 3.2);
+// butterfly lands on the Reminders note
+const bf = $('#al-bf'), bfs = $('#al-bfs'), fr = { f: 0 };
+const frame = () => { const k = Math.floor(fr.f) % 16; const pos = `${-(k % 4) * 161}px ${-Math.floor(k / 4) * 152}px`; bf.style.backgroundPosition = pos; bfs.style.backgroundPosition = pos; };
+tl.fromTo(fr, { f: 0 }, { f: 16 * 9, duration: 4.2, ease: 'none', onUpdate: frame }, at(3) - 0.2);
+const path = { p: 0 };
+const fly = () => { const p = path.p; const x = 2000 - p * 620 + Math.sin(p * 9) * 60, y = 120 + p * 230 + Math.cos(p * 7) * 50; gsap.set(bf, { x, y }); gsap.set(bfs, { x: x + 40 + (1 - p) * 120, y: y + 50 + (1 - p) * 90 }); };
+gsap.set([bf, bfs], { x: 2000, y: 120 });
+tl.fromTo(path, { p: 0 }, { p: 1, duration: 3.4, ease: 'power2.out', onUpdate: fly }, at(3) - 0.2);
+// render counter: counts while things move, stops when still
+const nEl = $('#al-n'), cnt = { n: 0 };
+tl.fromTo(cnt, { n: 0 }, { n: 102, duration: 3.4, ease: 'none', onUpdate: () => { nEl.textContent = Math.round(cnt.n); } }, at(3) - 0.2);
+tl.fromTo('#al-meter', { opacity: 0 }, { opacity: 1, duration: 0.3 }, at(3) - 0.2);
+const c4 = caption(ROOT, 'Still wall → no frames → the GPU rests', { bottom: 70, size: 56 });
+wordsIn(tl, c4, at(4) + 0.4);
+tl.fromTo('#al-meter', { scale: 1 }, { scale: 1.12, duration: 0.3, yoyo: true, repeat: 1 }, at(4) + 1.6);
+</script>

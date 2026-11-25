@@ -1,0 +1,20 @@
+{
+  "name": "siri-alexa-cloudflare-realtime-board",
+  "version": "1.0.0",
+  "description": "One spoken sentence, four ecosystems, near real time: Siri, Alexa and an AI agent write to one Cloudflare Durable Object that pushes to every screen. A free, MIT-licensed system architecture reference.",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "logs": "wrangler tail",
+    "key": "node scripts/setup.mjs --new-key"
+  },
+  "devDependencies": {
+    "wrangler": "^4.40.0"
+  },
+  "engines": { "node": ">=18" },
+  "keywords": ["cloudflare-workers", "durable-objects", "workers-ai", "websockets", "siri-shortcuts", "alexa-skill", "system-architecture", "event-driven", "real-time", "edge-computing", "llama", "threejs", "integration", "serverless"]
+}

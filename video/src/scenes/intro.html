@@ -1,0 +1,70 @@
+<!--TIMING {"pre": 1.0, "gap": 0.9, "post": 1.2} -->
+<!--SFX [["pop", "c(1)+2.2", 0.3], ["pop", "c(1)+3.4", 0.3], ["pop", "c(1)+4.6", 0.3], ["pop", "c(1)+6.0", 0.3], ["whoosh-short", "c(2)+0.3", 0.3], ["pop", "e(2)-0.6", 0.35], ["whoosh", "c(3)+3.0", 0.3]] -->
+<style>
+#root { background: #e7ebf0; }
+.title { position: absolute; left: 0; right: 0; top: 330px; text-align: center; }
+.title h1 { font: 800 132px/1 Outfit, sans-serif; letter-spacing: -.035em; color: #18202c; }
+.title p { margin-top: 30px; font: 500 40px Inter, sans-serif; color: #5b6576; }
+.eco { position: absolute; width: 470px; height: 210px; border-radius: 28px; background: #fff; box-shadow: 0 22px 44px rgba(20,24,32,.14); padding: 30px 34px;
+  outline: 4px dashed color-mix(in oklab, var(--c) 55%, #fff); outline-offset: 14px; }
+.eco b { display: flex; align-items: center; gap: 16px; font: 800 52px Outfit, sans-serif; letter-spacing: -.02em; color: #18202c; }
+.eco b i { width: 26px; height: 26px; border-radius: 50%; background: var(--c); }
+.eco span { display: block; margin-top: 14px; font: 500 32px 'IBM Plex Mono', monospace; color: #5b6576; }
+.hub { width: 520px; height: 300px; }
+#in-lines { position: absolute; left: 0; top: 0; }
+.dot { position: absolute; width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: 50%; background: #e0662a; border: 6px solid #fff; box-shadow: 0 8px 18px rgba(224,102,42,.45); }
+.landed { position: absolute; left: 1490px; top: 470px; width: 300px; height: 210px; padding: 40px 30px 0; background: linear-gradient(170deg,#fdf1b3,#fbe88f 60%,#f3dc78); box-shadow: 0 24px 40px -14px rgba(60,40,10,.45); font: 40px/1.2 'Bradley Hand', cursive; color: #1f2a44; text-align: center; }
+.surface { position: absolute; left: 480px; top: 200px; width: 960px; height: 540px; border-radius: 18px; overflow: hidden; box-shadow: 0 40px 80px rgba(20,24,32,.3); }
+#in-world { position: absolute; left: 0; top: 0; }
+</style>
+<body>
+  <div id="in-world"></div>
+  <div class="title" id="in-title"><h1>System architecture</h1><p>a live demonstration across four ecosystems</p></div>
+  <svg id="in-lines" width="1920" height="1080" viewBox="0 0 1920 1080"></svg>
+  <div class="eco" id="in-apple" style="--c:#2f6ff2;left:110px;top:120px"><b><i></i>Apple</b><span>Siri · Shortcuts</span></div>
+  <div class="eco" id="in-amazon" style="--c:#0f9a92;left:110px;top:435px"><b><i></i>Amazon</b><span>Alexa · signed skill</span></div>
+  <div class="eco" id="in-muse" style="--c:#7350e6;left:110px;top:750px"><b><i></i>Meta</b><span>Muse · AI assistant</span></div>
+  <div class="eco hub" id="in-cf" style="--c:#f2903c;left:760px;top:390px"><b><i></i>Cloudflare edge</b><span>Workers · Workers AI<br>Durable Objects</span></div>
+  <div class="landed" id="in-landed">the same<br>place, every<br>time</div>
+  <div class="surface" id="in-surface"></div>
+</body>
+<script>
+// title
+const title = $('#in-title');
+// the title is on screen from frame 0 (the thumbnail)
+tl.fromTo(title.querySelector('p'), { opacity: 0 }, { opacity: 1, duration: 0.5 }, at(0) + 1.2);
+out(tl, title, at(1) - 0.2, 0.4);
+// four ecosystems, walled off from each other
+const ecos = [['#in-apple', at(1) + 2.2], ['#in-amazon', at(1) + 3.4], ['#in-muse', at(1) + 4.6], ['#in-cf', at(1) + 6.0]];
+ecos.forEach(([s, t]) => show(tl, $(s), t, 0.7, { y: 30 }));
+// the event crosses them
+const svg = $('#in-lines');
+const curve = (x1, y1, x2, y2) => `M${x1} ${y1} C ${x1 + 160} ${y1}, ${x2 - 160} ${y2}, ${x2} ${y2}`;
+const paths = [curve(580, 225, 760, 500), curve(580, 540, 760, 540), curve(580, 855, 760, 580), curve(1280, 540, 1490, 575)];
+const cols = ['#2f6ff2', '#0f9a92', '#7350e6', '#e0662a'];
+const P = paths.map((d, i) => SV('path', { d, fill: 'none', stroke: cols[i], 'stroke-width': 6, 'stroke-linecap': 'round' }, svg));
+P.forEach((p, i) => drawPath(tl, p, at(2) + 0.1 + i * 0.15, 0.9));
+packet(tl, P[0], at(2) + 1.0, 1.1, { r: 16, color: '#2f6ff2', sw: 5, parent: svg });
+packet(tl, P[1], at(2) + 1.5, 1.1, { r: 16, color: '#0f9a92', sw: 5, parent: svg });
+packet(tl, P[2], at(2) + 2.0, 1.1, { r: 16, color: '#7350e6', sw: 5, parent: svg });
+packet(tl, P[3], at(2) + 3.0, 1.0, { r: 18, color: '#e0662a', sw: 5, parent: svg });
+const rt = tag(ROOT, 'near real time', COL.write, [1020, 330], { size: 40 });
+show(tl, rt, at(2) + 1.2, 0.5, { y: 16 });
+show(tl, $('#in-landed'), end(2) - 0.8, 0.6, { rotation: -8, scale: 0.7 });
+// the project is the surface; the architecture is underneath
+const fade = [...ecos.map(e => $(e[0])), svg, rt, $('#in-landed')];
+fade.forEach(el => out(tl, el, at(3) - 0.3, 0.4));
+const sf = $('#in-surface');
+board(sf, 960, 540);
+show(tl, sf, at(3) + 0.1, 0.8, { scale: 0.9 });
+const l1 = tag(ROOT, 'the project: a family board', COL.write, [960, 180], { size: 40 });
+show(tl, l1, at(3) + 0.4, 0.5, { y: 16 });
+const W = isoWorld($('#in-world'), { prefix: 'in' });
+W.setCam(tl, 'all', 0.97, 0, 40);
+gsap.set($('#in-world'), { opacity: 0 });
+tl.fromTo($('#in-world'), { opacity: 0 }, { opacity: 1, duration: 0.6 }, at(3) + 3.0);
+tl.fromTo(sf, { y: 0 }, { y: -900, duration: 0.9, ease: 'power3.in', immediateRender: false }, at(3) + 3.0);
+out(tl, l1, at(3) + 2.9, 0.3);
+const l2 = tag(ROOT, 'the subject: the architecture underneath', COL.ink, [960, 140], { size: 44 });
+show(tl, l2, at(3) + 3.8, 0.6, { y: 16 });
+</script>

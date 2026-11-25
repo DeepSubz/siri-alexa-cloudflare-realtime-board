@@ -1,0 +1,100 @@
+{
+  "interactionModel": {
+    "languageModel": {
+      "invocationName": "post it board",
+      "intents": [
+        {
+          "name": "AddIntent",
+          "slots": [{ "name": "text", "type": "AMAZON.SearchQuery" }],
+          "samples": [
+            "add {text}",
+            "please add {text}",
+            "add a reminder {text}",
+            "add a reminder that {text}",
+            "remind me {text}",
+            "remind me to {text}",
+            "remind me that {text}",
+            "remember {text}",
+            "remember that {text}",
+            "put {text}",
+            "put {text} on the board",
+            "new task {text}",
+            "note that {text}",
+            "write down {text}"
+          ]
+        },
+        {
+          "name": "DoneIntent",
+          "slots": [{ "name": "text", "type": "AMAZON.SearchQuery" }],
+          "samples": [
+            "cross off {text}",
+            "cross out {text}",
+            "tick off {text}",
+            "check off {text}",
+            "strike {text}",
+            "strike off {text}",
+            "mark {text} done",
+            "mark {text} as done",
+            "{text} is done",
+            "we finished {text}",
+            "we did {text}",
+            "finished {text}",
+            "done with {text}",
+            "complete {text}"
+          ]
+        },
+        {
+          "name": "RemoveIntent",
+          "slots": [{ "name": "text", "type": "AMAZON.SearchQuery" }],
+          "samples": [
+            "remove {text}",
+            "delete {text}",
+            "erase {text}",
+            "take off {text}",
+            "take {text} off the board",
+            "get rid of {text}",
+            "cancel {text}"
+          ]
+        },
+        {
+          "name": "UndoIntent",
+          "slots": [],
+          "samples": [
+            "undo",
+            "undo that",
+            "undo it",
+            "put it back",
+            "add it back",
+            "take that back",
+            "oops"
+          ]
+        },
+        {
+          "name": "AnswerIntent",
+          "slots": [{ "name": "text", "type": "AMAZON.SearchQuery" }],
+          "samples": [
+            "the {text}",
+            "the {text} one",
+            "the one about {text}",
+            "it's {text}",
+            "it is {text}",
+            "in {text}",
+            "to {text}",
+            "under {text}",
+            "for {text}",
+            "on {text}",
+            "{text} please"
+          ]
+        },
+        { "name": "AMAZON.YesIntent", "samples": [] },
+        { "name": "AMAZON.NoIntent", "samples": ["no thanks", "that's all", "nothing else", "all done", "I'm done"] },
+        { "name": "AMAZON.HelpIntent", "samples": [] },
+        { "name": "AMAZON.CancelIntent", "samples": [] },
+        { "name": "AMAZON.StopIntent", "samples": [] },
+        { "name": "AMAZON.NavigateHomeIntent", "samples": [] },
+        { "name": "AMAZON.FallbackIntent", "samples": [] }
+      ],
+      "types": []
+    }
+  }
+}

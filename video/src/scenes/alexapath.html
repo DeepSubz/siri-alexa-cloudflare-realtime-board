@@ -1,0 +1,56 @@
+<!--TIMING {"pre": 0.6, "gap": 0.7, "post": 1.6} -->
+<!--SFX [["whoosh", "c(0)+0.3", 0.35], ["typing", "c(0)+1.6", 0.25], ["whoosh", "c(1)+0.6", 0.4], ["pop", "c(2)+1.6", 0.35], ["pop", "c(2)+4.2", 0.35], ["pop", "c(2)+6.6", 0.35], ["pop", "c(3)+0.8", 0.35], ["pop", "c(3)+3.6", 0.35], ["whoosh-short", "c(4)", 0.35]] -->
+<style>
+#root { background: #e7ebf0; }
+#ap-host { position: absolute; left: 0; top: 0; }
+.chk { display: flex; align-items: center; gap: 20px; font: 600 36px Inter, sans-serif; margin: 16px 0; white-space: nowrap; }
+.chk b { flex: none; width: 50px; height: 50px; border-radius: 50%; border: 4px solid #cfd6df; display: grid; place-items: center; font: 800 30px Outfit; color: #fff; }
+.chk code { font: 500 30px 'IBM Plex Mono'; color: #5b6576; }
+</style>
+<body>
+  <div id="ap-host"></div>
+</body>
+<script>
+const W = isoWorld($('#ap-host'), { prefix: 'ap' });
+W.hideFlows();
+W.setCam(tl, 'echo', 1.8, -420, 60);
+W.focusOnly(tl, ['echo', 'cloud', 'worker', 'ai', 'do', 'sheet', 'db'], ['alexa1', 'alexa2', 'ai', 'write', 'db'], 0, 0.01);
+W.move(tl, [12.5, 30, 3.5], 2.2, at(0), 1.4, -380, 40);
+W.draw(tl, 'alexa1', at(0) + 0.3, 0.9);
+W.pk(tl, 'alexa1', at(0) + 0.4, 0.9, { r: 12 });
+const intent = card(ROOT, 1040, 170, 800, 'Amazon turns speech into an intent', COL.alexa, '', { fs: 32 });
+show(tl, intent.el, at(0) + 1.0, 0.6, { x: 60 });
+typeHTML(tl, intent.bd, code('{"intent": {\n   "name": "DoneIntent",\n   "slots": {"text": {\n     "value": "the math packet"}}}}'), at(0) + 1.6, 1.6);
+out(tl, intent.el, at(1) - 0.3, 0.3);
+// signed and sent
+W.move(tl, [11, 21, 4], 1.35, at(1) - 0.2, 1.8, -420, 40);
+W.draw(tl, 'alexa2', at(1) + 0.4, 1.2);
+W.pk(tl, 'alexa2', at(1) + 0.6, 1.4, { r: 14 });
+const sig = card(ROOT, 1040, 170, 800, 'Signed by Amazon', COL.alexa, '', { fs: 28 });
+show(tl, sig.el, at(1) + 0.3, 0.6, { x: 60 });
+typeHTML(tl, sig.bd, code('POST /alexa\nSignature-256: k3Jd9…Qw==\nSignatureCertChainUrl:\n  s3.amazonaws.com/echo.api/…'), at(1) + 0.7, 1.4);
+out(tl, sig.el, at(2) - 0.3, 0.3);
+// five checks
+W.move(tl, 'worker', 2.2, at(2) - 0.2, 1.4, -520, 120);
+const ck = card(ROOT, 880, 170, 960, 'The worker verifies everything', COL.zCf, '', { mono: false, fs: 34 });
+show(tl, ck.el, at(2) + 0.2, 0.6, { x: 60 });
+const rows = [
+  ['Certificate comes from Amazon', 's3.amazonaws.com/echo.api', at(2) + 1.6],
+  ['Its name is right', 'echo-api.amazon.com', at(2) + 4.2],
+  ['RSA signature matches', 'RSA-SHA256', at(2) + 6.6],
+  ['Request is fresh', '< 150 s old', at(3) + 0.8],
+  ['Skill ID is this family’s', 'amzn1.ask.skill…', at(3) + 3.6],
+];
+rows.forEach(([a, b, t]) => {
+  const r = HT('div', { class: 'chk' }, ck.bd); const dot = HT('b', { text: '✓' }, r); HT('span', { text: a }, r); HT('code', { text: b }, r);
+  tl.fromTo(r, { opacity: 0.25 }, { opacity: 1, duration: 0.3 }, t);
+  tl.fromTo(dot, { backgroundColor: 'rgba(15,154,146,0)', borderColor: '#cfd6df' }, { backgroundColor: 'rgba(15,154,146,1)', borderColor: '#0f9a92', duration: 0.25 }, t);
+});
+out(tl, ck.el, at(4) - 0.3, 0.3);
+// same brain
+W.move(tl, [12, 9, 3], 1.5, at(4) - 0.2, 1.6, 0, 80);
+W.draw(tl, 'ai', at(4) + 0.6, 0.8); W.draw(tl, 'write', at(4) + 1.4, 0.8); W.draw(tl, 'db', at(4) + 2.0, 0.5);
+W.pk(tl, 'ai', at(4) + 0.8, 0.9, { r: 12 }); W.pk(tl, 'write', at(4) + 1.7, 0.9, { r: 12 });
+const same = tag(ROOT, 'The same brain Siri uses', COL.ai, [960, 180], { size: 48 });
+show(tl, same, at(4) + 1.0, 0.6, { y: 20 });
+</script>

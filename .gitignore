@@ -1,0 +1,16 @@
+node_modules/
+.wrangler/
+.dev.vars
+.env
+*.local
+.DS_Store
+# video build output and media (see video/README.md)
+video/compositions/
+video/index.html
+video/assets/
+video/renders/
+video/.hyperframes/
+video/timing.json
+video/captions.json
+video/voice_manifest.json
+video/node_modules/

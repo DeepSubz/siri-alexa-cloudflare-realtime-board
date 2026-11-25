@@ -1,0 +1,27 @@
+<!--TIMING {"pre": 0.6, "gap": 1.0, "post": 4.5} -->
+<!--SFX [["impact-bass-1", "c(0)+0.1", 0.35], ["pop", "c(0)+1.1", 0.35], ["pop", "c(0)+2.3", 0.35], ["whoosh", "c(1)-0.4", 0.35]] -->
+<style>
+#root { background: #e7ebf0; }
+.w { position: absolute; left: 0; right: 0; text-align: center; font: 800 150px/1 Outfit, sans-serif; letter-spacing: -.035em; color: #18202c; }
+.note { position: absolute; left: 610px; top: 240px; width: 700px; height: 560px; padding: 90px 60px 0; border-radius: 4px; background: linear-gradient(170deg, #fdf1b3, #fbe88f 60%, #f3dc78); box-shadow: 0 40px 60px -20px rgba(60,40,10,.45); text-align: center; }
+.note .pin { position: absolute; left: 50%; top: 20px; width: 40px; height: 40px; margin-left: -20px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #ff7b6b, #c8322a 70%); box-shadow: 0 4px 6px rgba(0,0,0,.35); }
+.note h2 { font: 84px/1.05 'Bradley Hand', cursive; color: #1f2a44; }
+.kick { position: absolute; left: 0; right: 0; top: 120px; text-align: center; font: 800 64px Outfit, sans-serif; letter-spacing: -.02em; color: #18202c; }
+.note p { font: 46px/1.25 'Bradley Hand', cursive; color: #5a4320; margin-top: 46px; }
+.stack { position: absolute; left: 0; right: 0; bottom: 150px; text-align: center; font: 600 34px 'IBM Plex Mono', monospace; color: #5b6576; }
+</style>
+<body>
+  <div class="kick" id="en-kick">A system architecture demonstration</div>
+  <div class="note" id="en-note"><div class="pin"></div><h2>System<br>architecture</h2><p id="en-by" data-var-text="builtBy">Designed, integrated &amp; engineered end to end</p></div>
+  <div class="stack" id="en-stack">Siri · Alexa · Muse · Cloudflare Workers · Workers AI · Durable Objects · WebSockets · Three.js</div>
+</body>
+<script>
+try { const v = window.__hyperframes && window.__hyperframes.getVariables && window.__hyperframes.getVariables(); if (v && v.builtBy) $('#en-by').textContent = v.builtBy; } catch (e) {}
+const lines = [['One event.', 250, at(0) + 0.1], ['Four ecosystems.', 430, at(0) + 1.1], ['Near real time.', 610, at(0) + 2.3]];
+const els = lines.map(([t, y, s], i) => { const el = words(ROOT, t, `top:${y}px${i === 2 ? ';color:#e0662a' : ''}`, 'w'); wordsIn(tl, el, s, 0.09); return el; });
+els.forEach(el => out(tl, el, at(1) - 0.5, 0.35));
+show(tl, $('#en-note'), at(1) - 0.3, 0.9, { rotation: -10, y: -120, scale: 0.8 });
+tl.fromTo('#en-note', { rotation: -10 }, { rotation: -1.5, duration: 0.9, ease: 'expo.out', immediateRender: false }, at(1) - 0.3);
+show(tl, $('#en-stack'), at(1) + 1.2, 0.8, { y: 20 });
+show(tl, $('#en-kick'), at(1), 0.7, { y: 20 });
+</script>

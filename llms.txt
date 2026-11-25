@@ -1,0 +1,19 @@
+# Siri-Alexa-Cloudflare Realtime Board
+
+> Open-source (MIT) reference architecture showing real-time integration across four ecosystems: Apple Siri Shortcuts, Amazon Alexa, an AI agent (e.g. Meta's Muse, ChatGPT, Claude) and Cloudflare's edge. One spoken sentence becomes a handwritten post-it on every screen in near real time. Free to deploy on Cloudflare's free plan.
+
+Key facts:
+- Cloudflare Worker (src/worker.js) handles routing, auth (constant-time Bearer key), Alexa request-signature verification and AI guardrails.
+- Workers AI model @cf/meta/llama-3.3-70b-instruct-fp8-fast turns sentences into strict JSON intents (action, group, task, question); deterministic code applies them.
+- One Durable Object ("Board", SQLite storage) is the single writer and pushes the Markdown file to every screen over hibernatable WebSockets.
+- State is a human-readable Markdown file; JSON is used only on the wire.
+- Patterns: event driven, single writer, compute at the edge, AI with guardrails, push not poll, zero trust between vendors.
+- Setup: `npm install && npm run setup` (signs in, deploys to your Cloudflare account, creates a write key).
+
+## Docs
+- [README](README.md): overview, quick start, API, FAQ
+- [Architecture walkthrough](docs/ARCHITECTURE.md)
+- [Task file format and API details](docs/FORMAT.md)
+- [Siri Shortcut guide](docs/SIRI_SHORTCUT.md)
+- [Alexa skill guide](alexa/SETUP.md)
+- [AI agent guide](docs/AI_AGENT.md)

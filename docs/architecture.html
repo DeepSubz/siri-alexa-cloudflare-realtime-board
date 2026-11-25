@@ -1,0 +1,836 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Family Board Architecture</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Caveat:wght@600&display=swap">
+<style>
+/* Layout: an isometric model of the system on drafting paper, then reference sheets below it. */
+:root {
+  --ground: #e8ecf1;
+  --paper: #f6f8fa;
+  --panel: #ffffff;
+  --ink: #18202c;
+  --muted: #586374;
+  --line: #cfd6df;
+  --edge: rgba(24, 32, 44, .22);
+
+  --z-apple: #c5ccd6;
+  --z-amazon: #33b3ab;
+  --z-muse: #9a7cf0;
+  --z-cf: #f2903c;
+  --z-screen: #69b87c;
+  --postit: #fbe88f;
+  --vault: #3e4757;
+
+  --k-siri: #2f6ff2;
+  --k-alexa: #0f9a92;
+  --k-muse: #7350e6;
+  --k-ai: #d2458e;
+  --k-write: #e0662a;
+  --k-push: #e0662a;
+  --k-asset: #7d8798;
+  --k-key: #a1792a;
+
+  --f-display: "Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", "Helvetica Neue", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --f-hand: "Caveat", "Bradley Hand", cursive;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground: #0f141d; --paper: #131a25; --panel: #1a2230; --ink: #e7ebf2; --muted: #9aa5b7; --line: #2c3646; --edge: rgba(0,0,0,.45);
+    --z-apple: #8f99a8; --z-amazon: #1f9890; --z-muse: #7d5fe0; --z-cf: #e07a28; --z-screen: #4d9e61; --postit: #f2d86a; --vault: #5a6578;
+    --k-siri: #6b9bff; --k-alexa: #3fd0c6; --k-muse: #a58bff; --k-ai: #ff6fb4; --k-write: #ff8a4c; --k-push: #ff8a4c; --k-asset: #9aa5b7; --k-key: #e0b35a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --ground: #0f141d; --paper: #131a25; --panel: #1a2230; --ink: #e7ebf2; --muted: #9aa5b7; --line: #2c3646; --edge: rgba(0,0,0,.45);
+  --z-apple: #8f99a8; --z-amazon: #1f9890; --z-muse: #7d5fe0; --z-cf: #e07a28; --z-screen: #4d9e61; --postit: #f2d86a; --vault: #5a6578;
+  --k-siri: #6b9bff; --k-alexa: #3fd0c6; --k-muse: #a58bff; --k-ai: #ff6fb4; --k-write: #ff8a4c; --k-push: #ff8a4c; --k-asset: #9aa5b7; --k-key: #e0b35a;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font: 15px/1.55 var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 64px;
+}
+.wrap { max-width: 1440px; margin: 0 auto; display: flex; flex-direction: column; gap: 44px; }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; letter-spacing: -.01em; }
+h1 { font-size: clamp(30px, 4.6vw, 54px); font-weight: 800; line-height: 1.02; }
+h2 { font-size: clamp(22px, 2.4vw, 30px); font-weight: 700; }
+h3 { font-size: 16px; font-weight: 700; }
+p { margin: 0; }
+code, pre { font-family: var(--f-mono); font-size: 12.5px; }
+.eyebrow { font: 600 12px/1 var(--f-body); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.hand { font-family: var(--f-hand); font-size: 22px; color: var(--k-write); line-height: 1.1; }
+
+header { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 28px; align-items: end; }
+header .lede { color: var(--muted); max-width: 62ch; margin-top: 14px; font-size: 16px; }
+.legend { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 13px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 7px; }
+.legend i { width: 22px; height: 4px; border-radius: 2px; background: var(--k); display: inline-block; }
+.legend i.dash { background: repeating-linear-gradient(90deg, var(--k) 0 5px, transparent 5px 9px); }
+
+/* ---------- the model ---------- */
+.stage { display: flex; flex-direction: column; gap: 16px; }
+.model {
+  background:
+    radial-gradient(1200px 600px at 40% 30%, color-mix(in oklab, var(--panel) 70%, transparent), transparent 70%),
+    var(--ground);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  overflow: hidden;
+  min-width: 0;
+}
+.traces { display: flex; flex-wrap: wrap; gap: 8px; padding: 14px 14px 0; }
+.traces button {
+  font: 500 13.5px/1 var(--f-body); color: var(--ink);
+  background: var(--panel); border: 1px solid var(--line); border-radius: 999px;
+  padding: 9px 14px 9px 11px; display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
+}
+.traces button i { width: 10px; height: 10px; border-radius: 50%; background: var(--k); }
+.traces button[aria-pressed="true"] { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+.traces button:focus-visible { outline: 3px solid var(--k-siri); outline-offset: 2px; }
+.scroller { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+#scene { display: block; width: 100%; min-width: 1100px; height: auto; overflow: hidden; }
+.hint { padding: 0 16px 12px; font-size: 12.5px; color: var(--muted); }
+
+#scene text { fill: var(--ink); }
+#scene .box polygon { stroke: var(--edge); stroke-width: .7; stroke-linejoin: round; }
+#scene .box .top { fill: var(--c); }
+#scene .box .lf { fill: color-mix(in oklab, var(--c), #000 15%); }
+#scene .box .rt { fill: color-mix(in oklab, var(--c), #000 30%); }
+#scene .platform .top { fill: color-mix(in oklab, var(--c) 26%, var(--panel)); }
+#scene .platform .lf { fill: color-mix(in oklab, var(--c) 55%, #000 10%); }
+#scene .platform .rt { fill: color-mix(in oklab, var(--c) 45%, #000 28%); }
+#scene .gridline { stroke: var(--ink); opacity: .06; stroke-width: 1; }
+#scene .zone-title { font: 800 15px var(--f-display); letter-spacing: .12em; fill: color-mix(in oklab, var(--c), var(--ink) 45%); }
+#scene .zone-sub { font: 500 10.5px var(--f-mono); fill: var(--muted); }
+#scene .face-ink { fill: #1b2230; }
+#scene .screen { fill: #222a37; }
+#scene .wall { fill: #d9c8a8; }
+#scene .md { font: 500 6.3px var(--f-mono); fill: #3a3320; }
+#scene .md.h { font-weight: 600; fill: #7a4d10; }
+#scene .glyph { font: 700 15px var(--f-display); fill: rgba(255,255,255,.92); }
+#scene .glyph.dark { fill: rgba(20,26,36,.75); }
+
+#scene .flow { fill: none; stroke: var(--k); stroke-width: 2.4; stroke-linecap: round; }
+#scene .flow.reply { stroke-dasharray: 6 6; stroke-width: 1.8; }
+#scene .glow { fill: none; stroke: var(--k); stroke-width: 9; opacity: .14; stroke-linecap: round; }
+#scene .shadow { fill: none; stroke: var(--ink); stroke-width: 2; opacity: .07; stroke-linecap: round; }
+#scene .packet { fill: var(--k); stroke: var(--panel); stroke-width: 1.6; }
+#scene .chip rect { fill: var(--panel); stroke: var(--k); stroke-width: 1; }
+#scene .chip text { font: 500 10.5px var(--f-mono); fill: var(--ink); }
+
+#scene .callout .lead { stroke: var(--muted); stroke-width: 1; fill: none; }
+#scene .callout .dot { fill: var(--ink); }
+#scene .callout rect { fill: var(--panel); stroke: var(--line); }
+#scene .callout .t { font: 600 12.5px var(--f-body); fill: var(--ink); }
+#scene .callout .l { font: 400 11px var(--f-body); fill: var(--muted); }
+#scene .callout .l.mono { font: 400 10.5px var(--f-mono); }
+
+#scene .t-item { transition: opacity .35s ease; }
+#scene.tracing .t-item:not(.on) { opacity: .1; }
+#scene.tracing .callout.t-item:not(.on) { opacity: .18; }
+
+/* ---------- step panel ---------- */
+.steps {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 20px 20px 22px;
+  min-width: 0;
+}
+.steps .head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; margin-bottom: 16px; }
+.steps .head .sum { margin: 0; }
+.steps h3 { display: flex; align-items: center; gap: 9px; font-size: 19px; }
+.steps h3 i { width: 12px; height: 12px; border-radius: 50%; background: var(--k); flex: none; }
+.steps .sum { color: var(--muted); font-size: 13.5px; margin: 8px 0 16px; }
+.steps ol { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 16px 22px; counter-reset: s; }
+.steps li { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 10px; counter-increment: s; }
+.steps li::before {
+  content: counter(s); width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center;
+  font: 600 12px var(--f-body); color: var(--panel); background: var(--k);
+}
+.steps li b { display: block; font-size: 14px; font-weight: 600; }
+.steps li span { display: block; color: var(--muted); font-size: 13px; }
+.steps li code { display: block; margin-top: 6px; padding: 8px 10px; border-radius: 8px; background: var(--paper); border: 1px solid var(--line); white-space: pre-wrap; word-break: break-word; font-size: 11.5px; color: var(--ink); }
+
+/* ---------- reference sheets ---------- */
+section { display: flex; flex-direction: column; gap: 18px; }
+section > .intro { color: var(--muted); max-width: 70ch; }
+.grid2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; }
+.grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.sheet { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.sheet .tag { font: 600 11px/1 var(--f-mono); letter-spacing: .04em; color: var(--k, var(--muted)); text-transform: uppercase; }
+.sheet p.note { color: var(--muted); font-size: 13px; }
+pre { margin: 0; padding: 12px 14px; border-radius: 10px; background: var(--paper); border: 1px solid var(--line); overflow-x: auto; line-height: 1.5; color: var(--ink); }
+pre .k { color: var(--k-siri); } pre .s { color: var(--k-alexa); } pre .n { color: var(--k-write); } pre .c { color: var(--muted); }
+pre .h { color: var(--k-write); font-weight: 600; } pre .x { color: var(--k-alexa); } pre .o { color: var(--k-siri); }
+.dir { font: 600 11px var(--f-mono); color: var(--muted); letter-spacing: .05em; }
+
+.postit {
+  background: var(--postit); color: #2b2614; border-radius: 3px; padding: 18px 20px 20px;
+  box-shadow: 0 1px 0 rgba(0,0,0,.08), 0 14px 26px -14px rgba(40,30,0,.45);
+  transform: rotate(-.6deg); position: relative;
+}
+.postit pre { background: transparent; border: 0; padding: 0; color: #2b2614; font-size: 13px; }
+.postit pre .h { color: #8a4f0a; } .postit pre .x { color: #2e7d4f; } .postit pre .o { color: #2b4fa8; } .postit pre .c { color: #8a7f5c; }
+.postit::before { content: ""; position: absolute; top: -7px; left: 50%; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%; background: #d9443b; box-shadow: 0 2px 3px rgba(0,0,0,.35), inset -2px -2px 0 rgba(0,0,0,.2); }
+
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.tablebox { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; }
+th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font: 600 11.5px var(--f-body); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); background: color-mix(in oklab, var(--paper) 60%, var(--panel)); }
+tr:last-child td { border-bottom: 0; }
+td code { white-space: nowrap; }
+.m { display: inline-block; font: 600 10.5px/1 var(--f-mono); padding: 4px 6px; border-radius: 5px; color: var(--panel); background: var(--k); margin-right: 3px; }
+.auth { font-size: 12.5px; color: var(--muted); }
+
+.storekeys { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.storekeys div { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+.storekeys code { font-weight: 600; color: var(--k-write); }
+.storekeys span { display: block; font-size: 12.5px; color: var(--muted); margin-top: 4px; }
+
+.pipe { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.pipe .p { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: 13px; max-width: 220px; }
+.pipe .p b { display: block; font-size: 13.5px; }
+.pipe .p span { color: var(--muted); font-size: 12px; }
+.pipe .arrow { color: var(--muted); font-size: 18px; }
+.amb { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.amb div { border-radius: 12px; padding: 14px; color: #1d1a12; min-width: 0; }
+.amb b { display: block; font-family: var(--f-display); font-size: 15px; }
+.amb span { font-size: 12.5px; opacity: .8; }
+
+.guards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.guards div { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--k); border-radius: 10px; padding: 12px 14px; }
+.guards b { display: block; font-size: 14px; }
+.guards span { font-size: 13px; color: var(--muted); }
+
+#clock { display: block; width: 100%; min-width: 920px; height: auto; }
+#clock text { fill: var(--ink); }
+.clockbox { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow-x: auto; padding: 8px 6px; }
+
+footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line); padding-top: 18px; display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: space-between; }
+
+@media (max-width: 860px) {
+  header, .grid2 { grid-template-columns: minmax(0, 1fr); }
+  .grid3, .guards, .amb, .storekeys { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+}
+@media (max-width: 520px) {
+  .grid3, .guards, .amb, .storekeys { grid-template-columns: minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) { #scene .t-item { transition: none; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <div class="eyebrow">Family Board · system map · Nov 2026</div>
+      <h1>How a sentence becomes a post-it</h1>
+      <p class="lede">Every voice, assistant and screen in the house meets at one Markdown file held by a Cloudflare Durable Object. Follow any path below to see the exact request, the JSON it carries, and how the change reaches the wall in under a second.</p>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <p class="hand">“Hey Siri, Family Board… cross off the math packet.”</p>
+      <div class="legend" aria-label="Line colours">
+        <span style="--k:var(--k-siri)"><i></i>Siri</span>
+        <span style="--k:var(--k-alexa)"><i></i>Alexa</span>
+        <span style="--k:var(--k-muse)"><i></i>Muse</span>
+        <span style="--k:var(--k-ai)"><i></i>Workers AI</span>
+        <span style="--k:var(--k-push)"><i></i>Writes &amp; live push</span>
+        <span style="--k:var(--k-asset)"><i></i>Page files &amp; polling</span>
+        <span style="--k:var(--k-key)"><i></i>Key check</span>
+        <span style="--k:var(--muted)"><i class="dash"></i>Reply</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="stage">
+    <div class="model">
+      <div class="traces" role="group" aria-label="Follow a path">
+        <button type="button" id="tr-all" data-trace="all" aria-pressed="true" style="--k:var(--ink)"><i></i>Everything</button>
+        <button type="button" id="tr-siri" data-trace="siri" aria-pressed="false" style="--k:var(--k-siri)"><i></i>Siri</button>
+        <button type="button" id="tr-alexa" data-trace="alexa" aria-pressed="false" style="--k:var(--k-alexa)"><i></i>Alexa</button>
+        <button type="button" id="tr-muse" data-trace="muse" aria-pressed="false" style="--k:var(--k-muse)"><i></i>Muse</button>
+        <button type="button" id="tr-live" data-trace="live" aria-pressed="false" style="--k:var(--k-push)"><i></i>Screens &amp; refresh</button>
+      </div>
+      <div class="scroller"><svg id="scene" role="img" aria-label="Isometric map: Apple, Amazon and Muse send changes to the Cloudflare worker, which uses Workers AI, saves the file in a Durable Object and pushes it to the TV, laptop and phone screens."></svg></div>
+      <p class="hint">Pick a path to light it up. Dots show which way data moves; dashed lines are replies.</p>
+    </div>
+    <aside class="steps" id="steps" aria-live="polite"></aside>
+  </div>
+
+  <section>
+    <div class="eyebrow">The source of truth</div>
+    <h2>One Markdown file, four stored keys</h2>
+    <p class="intro">Everything the wall shows comes from <code>tasks.md</code>. People, Siri, Alexa and Muse all edit the same text; the board only reads it. Voice edits change one line and leave every other byte as it was.</p>
+    <div class="grid2">
+      <div class="postit"><pre id="mdsample"></pre></div>
+      <div class="sheet">
+        <div class="tag">Durable Object “Board” · SQLite storage</div>
+        <div class="storekeys">
+          <div><code>tasks</code><span>The whole Markdown file. Up to 256 KB.</span></div>
+          <div><code>updatedAt</code><span>Milliseconds timestamp of the last save.</span></div>
+          <div><code>history</code><span>Last 8 voice changes. Used for 6 hours, so “undo” and “the last one” work.</span></div>
+          <div><code>pending</code><span>The follow-up question just asked. Kept 3 minutes.</span></div>
+        </div>
+        <p class="note">There is exactly one object, named <code>family</code>. Every write runs inside it, so a Siri edit and a Muse upload can never collide. The same object holds every open board’s WebSocket and pushes the file to them after each save.</p>
+        <div class="tag" style="--k:var(--k-asset)">How the board reads it</div>
+        <p class="note"><code>## Group</code> starts a colour. <code>- [ ]</code> is a task, <code>- [x]</code> is crossed out, a plain line is a note and <code>&lt;!-- --&gt;</code> is hidden. Dates like “Thu Dec 3” or “due Dec 9” drive the TODAY and OVERDUE stamps.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="eyebrow">On the wire</div>
+    <h2>The JSON each path sends and gets back</h2>
+    <p class="intro">Examples are real shapes from the worker. The write key travels only in the <code>Authorization</code> header and is shown here as a placeholder.</p>
+    <div class="grid3" id="wire"></div>
+  </section>
+
+  <section>
+    <div class="eyebrow">Routes</div>
+    <h2>Every door into the worker</h2>
+    <div class="tablebox">
+      <table>
+        <thead><tr><th>Request</th><th>Who uses it</th><th>Guard</th><th>What happens</th></tr></thead>
+        <tbody id="routes"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="eyebrow">Clocks</div>
+    <h2>Refreshes and timers, to scale</h2>
+    <p class="intro">From the instant WebSocket push to the midnight repaint. The axis is logarithmic: each step to the right is ten times longer.</p>
+    <div class="clockbox"><svg id="clock" role="img" aria-label="Logarithmic timeline of the board's timers from instant to one day"></svg></div>
+  </section>
+
+  <section>
+    <div class="eyebrow">Inside the screen</div>
+    <h2>From text to a lit, living wall</h2>
+    <div class="pipe" id="pipe"></div>
+    <div class="amb">
+      <div style="background:#f7c98a"><b>Sun &amp; lamp</b><span>Amber at real sunrise and sunset, a dim lamp-lit night, darker after 10 pm. Tint refreshes every 5 minutes.</span></div>
+      <div style="background:#e9b9cf"><b>Holidays</b><span>Pumpkins in October and Thanksgiving week, snow caps and a tree Dec 18 – Jan 1, hearts Feb 7–14.</span></div>
+      <div style="background:#bfe0b4"><b>Seasons</b><span>Maple leaves in autumn, snow in winter, petals in spring, a few green leaves in summer. Plants tint to match.</span></div>
+      <div style="background:#bcd3f2"><b>Visitors</b><span>Up to 3 butterflies (2 on TV) every 30–70 s by day, with real shadows on the notes. None at night.</span></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="eyebrow">Guards</div>
+    <h2>What keeps it private and tidy</h2>
+    <div class="guards" id="guards"></div>
+  </section>
+
+  <footer>
+    <span>Your board: https://&lt;your-worker&gt;.&lt;your-subdomain&gt;.workers.dev · CSS fallback at /classic</span>
+    <span>Source: src/worker.js · index.html · wrangler.jsonc · alexa/ · FORMAT.md</span>
+  </footer>
+</div>
+
+<script>
+(() => {
+const NS = 'http://www.w3.org/2000/svg';
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const C30 = Math.cos(Math.PI / 6), S = 17;
+const P = (x, y, z = 0) => [(x - y) * C30 * S, (x + y) * .5 * S - z * S];
+const f = n => n.toFixed(1);
+const pts = a => a.map(p => P(...p).map(f).join(',')).join(' ');
+function el(tag, attrs = {}, parent) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+const svg = document.getElementById('scene');
+const defs = el('defs', {}, svg);
+const root = el('g', {}, svg);
+const L = { grid: el('g', {}, root), plat: el('g', {}, root), obj: el('g', {}, root), shadow: el('g', {}, root), flow: el('g', {}, root), chip: el('g', {}, root), call: el('g', {}, root) };
+
+// sphere gradients
+for (const [id, tok] of [['g-alexa', '--z-amazon'], ['g-siri', '--k-siri'], ['g-muse', '--z-muse'], ['g-cloud', '--panel']]) {
+  const g = el('radialGradient', { id, cx: '35%', cy: '30%', r: '75%' }, defs);
+  el('stop', { offset: '0', style: `stop-color:color-mix(in oklab, var(${tok}), #fff 55%)` }, g);
+  el('stop', { offset: '.6', style: `stop-color:var(${tok})` }, g);
+  el('stop', { offset: '1', style: `stop-color:color-mix(in oklab, var(${tok}), #000 35%)` }, g);
+}
+
+// ---------- primitives ----------
+const tclass = trace => trace ? ' t-item' : '';
+function box(parent, { x, y, z = 0, w, d, h, c, cls = 'box', trace }) {
+  const g = el('g', { class: cls + (cls === 'box' ? '' : ' box') + tclass(trace), style: `--c:var(${c})` }, parent);
+  if (trace) g.dataset.trace = trace;
+  el('polygon', { class: 'lf', points: pts([[x, y + d, z], [x + w, y + d, z], [x + w, y + d, z + h], [x, y + d, z + h]]) }, g);
+  el('polygon', { class: 'rt', points: pts([[x + w, y, z], [x + w, y + d, z], [x + w, y + d, z + h], [x + w, y, z + h]]) }, g);
+  el('polygon', { class: 'top', points: pts([[x, y, z + h], [x + w, y, z + h], [x + w, y + d, z + h], [x, y + d, z + h]]) }, g);
+  return g;
+}
+const MAT = { 'top-x': [C30, .5, -C30, .5], 'top-y': [C30, -.5, C30, .5], left: [C30, .5, 0, 1], right: [C30, -.5, 0, 1] };
+function ftext(parent, str, [x, y, z], plane, cls, extra = {}) {
+  const [px, py] = P(x, y, z);
+  const css = Object.entries(extra).map(([k, v]) => `${k}:${typeof v === 'number' ? v + 'px' : v}`).join(';');
+  const t = el('text', { transform: `matrix(${MAT[plane].map(n => n.toFixed(4)).join(',')},${f(px)},${f(py)})`, class: cls, style: css }, parent);
+  t.textContent = str;
+  return t;
+}
+function quad(parent, x, y, z, w, h, plane, attrs) { // rectangle on a left face (y const) going +x and up
+  const p = plane === 'left' ? [[x, y, z], [x + w, y, z], [x + w, y, z + h], [x, y, z + h]]
+          : plane === 'top' ? [[x, y, z], [x + w, y, z], [x + w, y + h, z], [x, y + h, z]]
+          : [[x, y, z], [x, y - w, z], [x, y - w, z + h], [x, y, z + h]];
+  return el('polygon', { points: pts(p), ...attrs }, parent);
+}
+function cylinder(parent, { x, y, z, r, h, c, trace }) {
+  const g = el('g', { class: 'box' + tclass(trace), style: `--c:var(${c})` }, parent);
+  if (trace) g.dataset.trace = trace;
+  const [bx, by] = P(x, y, z), [, ty] = P(x, y, z + h);
+  const rx = r * S * 1.2247, ry = r * S * .7071;
+  el('path', { class: 'lf', d: `M${f(bx - rx)},${f(ty)} L${f(bx - rx)},${f(by)} A${f(rx)},${f(ry)} 0 0 0 ${f(bx + rx)},${f(by)} L${f(bx + rx)},${f(ty)} Z`, stroke: 'var(--edge)' }, g);
+  el('ellipse', { class: 'top', cx: f(bx), cy: f(ty), rx: f(rx), ry: f(ry), stroke: 'var(--edge)' }, g);
+  return g;
+}
+function sphere(parent, [x, y, z], r, grad, trace) {
+  const [cx, cy] = P(x, y, z);
+  const c = el('circle', { cx: f(cx), cy: f(cy), r: f(r * S), fill: `url(#${grad})`, class: tclass(trace).trim() }, parent);
+  if (trace) c.dataset.trace = trace;
+  return c;
+}
+function miniBoard(parent, x, y, z, w, h, plane = 'left') {
+  quad(parent, x, y, z, w, h, plane, { class: 'wall' });
+  quad(parent, x + w * .2, y, z + h * .8, w * .6, h * .12, plane, { fill: '#7a5a3a' });
+  const cols = ['#fbe88f', '#f7b6c8', '#a9d4f5', '#b9e3a6', '#fcd4a9', '#d9c4f5'];
+  const nx = 3, ny = 2, pw = w * .22, ph = h * .27;
+  let i = 0;
+  for (let r = 0; r < ny; r++) for (let c = 0; c < nx; c++) {
+    const px = x + w * .08 + c * (w * .3), pz = z + h * .08 + (ny - 1 - r) * (h * .35);
+    quad(parent, px, y, pz, pw, ph, plane, { fill: cols[i++ % cols.length], stroke: 'rgba(0,0,0,.12)', 'stroke-width': .5 });
+  }
+}
+
+// ---------- ground grid ----------
+for (let x = -16; x <= 38; x += 2) el('polygon', { class: 'gridline', points: pts([[x, -9, 0], [x, 37, 0]]), fill: 'none' }, L.grid);
+for (let y = -9; y <= 37; y += 2) el('polygon', { class: 'gridline', points: pts([[-16, y, 0], [38, y, 0]]), fill: 'none' }, L.grid);
+
+// ---------- zones ----------
+const ZONES = [
+  { x: -14.5, y: 8.5, w: 13, d: 12.5, c: '--z-muse', title: 'MUSE', sub: 'collects · writes the file' },
+  { x: -7, y: 23.5, w: 10, d: 10, c: '--z-apple', title: 'APPLE', sub: 'iPhone · Siri Shortcut' },
+  { x: 6, y: 24.5, w: 13, d: 11, c: '--z-amazon', title: 'AMAZON', sub: 'Echo Show · Alexa skill' },
+  { x: 2.5, y: 1.5, w: 21.5, d: 19.5, c: '--z-cf', title: 'CLOUDFLARE', sub: 'worker “familyposts” · edge' },
+  { x: 25, y: -7.5, w: 12.5, d: 15, c: '--z-screen', title: 'SCREENS', sub: 'TV · laptop · phone' },
+];
+for (const z of ZONES) {
+  box(L.plat, { x: z.x, y: z.y, z: -.6, w: z.w, d: z.d, h: .6, c: z.c, cls: 'platform' });
+  const g = el('g', { style: `--c:var(${z.c})` }, L.plat);
+  ftext(g, z.title, [z.x + .7, z.y + z.d - .55, 0], 'top-x', 'zone-title');
+  ftext(g, z.sub, [z.x + .7, z.y + z.d - .1, 0], 'top-x', 'zone-sub');
+}
+
+// ---------- objects (painter's order by depth) ----------
+const items = [];
+const add = (depth, fn) => items.push({ depth, fn });
+
+// Muse: sources + core
+const SRC = [
+  { y: 9.6, c: '--k-siri', g: '31', name: 'Apple Calendar' },
+  { y: 13.1, c: '--k-ai', g: '@', name: 'Gmail' },
+  { y: 16.6, c: '--k-alexa', g: '✉', name: 'Apple Mail' },
+];
+for (const s of SRC) add(-12 + s.y + 1.2, g => {
+  const b = box(g, { x: -13.5, y: s.y, w: 2.6, d: 2.6, h: 1.5, c: s.c, trace: 'muse' });
+  ftext(b, s.g, [-12.9, s.y + 1.75, 1.5], 'top-x', 'glyph', { 'font-size': 16 });
+});
+add(-5 + 14.5, g => {
+  cylinder(g, { x: -5, y: 14.5, z: 0, r: 1.9, h: 3.4, c: '--z-muse', trace: 'muse' });
+  sphere(g, [-5, 14.5, 4.6], .75, 'g-muse', 'muse');
+});
+
+// Apple: shortcut tile + iPhone
+add(-4 + 30.5, g => {
+  const b = box(g, { x: -5.6, y: 29.2, w: 4.4, d: 2.4, h: .35, c: '--k-siri', trace: 'siri' });
+  ftext(b, 'Family Board', [-5.2, 30.7, .35], 'top-x', 'glyph', { 'font-size': 10.5 });
+  ftext(b, 'shortcut', [-5.2, 31.3, .35], 'top-x', 'glyph', { 'font-size': 9 });
+});
+add(-1.8 + 26.2, g => {
+  const b = box(g, { x: -3, y: 26, w: 2.5, d: .35, h: 4.8, c: '--z-apple', trace: 'siri' });
+  quad(b, -2.85, 26.36, .25, 2.2, 4.3, 'left', { class: 'screen' });
+  const [ox, oy] = P(-1.75, 26.36, 3);
+  el('circle', { cx: f(ox), cy: f(oy), r: 11, fill: 'url(#g-siri)' }, b);
+  ftext(b, 'What should', [-2.65, 26.36, 1.75], 'left', 'glyph', { 'font-size': 7.5 });
+  ftext(b, 'I update?', [-2.65, 26.36, 1.35], 'left', 'glyph', { 'font-size': 7.5 });
+});
+
+// Amazon: Echo Show + Alexa cloud
+add(9.75 + 31, g => {
+  const b = box(g, { x: 8, y: 30, w: 3.6, d: 1.6, h: 2.5, c: '--vault', trace: 'alexa' });
+  quad(b, 8.3, 31.62, .35, 3, 1.9, 'left', { class: 'screen' });
+  miniBoard(b, 8.45, 31.63, .5, 2.7, 1.6);
+});
+add(15 + 28, g => {
+  const grp = el('g', { class: 't-item' }, g); grp.dataset.trace = 'alexa';
+  sphere(grp, [15.8, 28.6, 4.6], .9, 'g-alexa');
+  sphere(grp, [14.6, 29.4, 4.9], 1.25, 'g-alexa');
+  sphere(grp, [15.6, 29.8, 5.2], 1.05, 'g-alexa');
+  sphere(grp, [16.4, 29.2, 4.7], .95, 'g-alexa');
+  const [rx, ry] = P(15.2, 29.3, .02);
+  el('ellipse', { cx: f(rx), cy: f(ry), rx: 46, ry: 14, fill: 'var(--ink)', opacity: .08 }, grp);
+});
+
+// Cloudflare
+add(8 + 5, g => {
+  const b = box(g, { x: 6, y: 3, w: 4.4, d: 4.2, h: 2.6, c: '--k-ai', trace: 'siri alexa' });
+  ftext(b, '✦ AI', [6.7, 6.2, 2.6], 'top-x', 'glyph', { 'font-size': 17 });
+});
+add(18.5 + 5, g => {
+  for (let i = 0; i < 3; i++) {
+    const b = box(g, { x: 16, y: 3, z: i * .55, w: 5.4, d: 4.4, h: .32, c: '--k-asset', trace: 'live' });
+    if (i === 2) ftext(b, 'public/', [16.6, 6.6, 1.42], 'top-x', 'glyph', { 'font-size': 13 });
+  }
+});
+add(8.5 + 13.5, g => {
+  const b = box(g, { x: 6, y: 11, w: 5, d: 5, h: 3, c: '--z-cf', trace: 'siri alexa muse live' });
+  ftext(b, 'worker.js', [6.6, 14.9, 3], 'top-x', 'glyph', { 'font-size': 14 });
+  const routes = ['/api/tasks', '/api/tasks/command', '/api/tasks/add', '/alexa', '/api/live'];
+  routes.forEach((r, i) => ftext(b, r, [6.25, 16, 2.6 - i * .56], 'left', 'glyph', { 'font-size': 7.4, 'font-family': 'IBM Plex Mono, monospace', 'font-weight': '500' }));
+});
+add(5 + 18.2, g => {
+  const b = box(g, { x: 3.6, y: 16.8, w: 2.6, d: 2.6, h: 1.7, c: '--vault', trace: 'siri muse' });
+  const [kx, ky] = P(4.9, 19.42, .95);
+  el('circle', { cx: f(kx), cy: f(ky - 3), r: 3.2, fill: 'var(--k-key)' }, b);
+  el('rect', { x: f(kx - 1.3), y: f(ky - 1), width: 2.6, height: 6, fill: 'var(--k-key)' }, b);
+});
+add(18.5 + 12.5, g => {
+  const b = box(g, { x: 16, y: 10, w: 5, d: 5, h: 3.4, c: '--z-cf', trace: 'siri alexa muse live' });
+  ftext(b, 'Board', [16.7, 14.6, 3.4], 'top-x', 'glyph', { 'font-size': 15 });
+  ftext(b, 'Durable Object', [16.25, 15.02, 2.6], 'left', 'glyph', { 'font-size': 9.5 });
+  ftext(b, 'id: “family”', [16.25, 15.02, 2.05], 'left', 'glyph', { 'font-size': 9, 'font-family': 'IBM Plex Mono, monospace' });
+});
+add(21 + 18.6, g => {
+  cylinder(g, { x: 21, y: 18.4, z: 0, r: 1.1, h: 1.9, c: '--k-asset', trace: 'siri alexa muse live' });
+});
+// the one file, floating above the Durable Object
+add(40, g => {
+  const grp = el('g', { class: 't-item' }, g); grp.dataset.trace = 'siri alexa muse live';
+  const [sx, sy] = P(18.7, 12.6, 0);
+  el('ellipse', { cx: f(sx), cy: f(sy - 3.4 * S), rx: 92, ry: 26, fill: 'var(--postit)', opacity: .22 }, grp);
+  box(grp, { x: 15.2, y: 9.2, z: 5.6, w: 6.8, d: 6.6, h: .16, c: '--postit' });
+  const lines = [['## Appointments', 1], ['- [ ] Dentist – Thu 4:15pm'], ['- [x] Eye test – Mon 9am'], ['## School', 1], ['- [ ] Math packet due Dec 9'], ['- [ ] Book fair – 12 Dec'], ['## Reminders', 1], ['- [ ] Check Disney bundle'], ['## Groceries', 1], ['- [ ] Milk (2%)'], ['- [ ] Bread – seeded']];
+  lines.forEach(([t, h], i) => ftext(grp, t, [15.6, 9.9 + i * .54, 5.77], 'top-x', 'md' + (h ? ' h' : '')));
+});
+
+// Screens: TV + Fire Stick, laptop, phone
+add(31 + -2.2, g => box(g, { x: 30.4, y: -2.5, w: 1.2, d: 1, h: 1, c: '--vault', trace: 'live siri alexa muse' }));
+add(31 + -1.6, g => {
+  const b = box(g, { x: 27, y: -2.2, z: 1, w: 8.4, d: .4, h: 5.2, c: '--vault', trace: 'live siri alexa muse' });
+  quad(b, 27.25, -1.79, 1.22, 7.9, 4.75, 'left', { class: 'screen' });
+  miniBoard(b, 27.4, -1.78, 1.38, 7.6, 4.45);
+});
+add(34 + -.2, g => {
+  const b = box(g, { x: 33.4, y: -.9, w: 1.6, d: .7, h: .32, c: '--k-asset', trace: 'live' });
+  ftext(b, 'TV mode', [33.4, -.25, .02], 'top-x', 'zone-sub', { 'font-size': 8 });
+});
+add(30.75 + 2.35, g => {
+  const b = box(g, { x: 28, y: 2.1, z: .3, w: 5.6, d: .3, h: 3.5, c: '--z-apple', trace: 'live siri alexa muse' });
+  quad(b, 28.2, 2.41, .5, 5.2, 3.1, 'left', { class: 'screen' });
+  miniBoard(b, 28.35, 2.42, .62, 4.9, 2.85);
+});
+add(30.75 + 4.4, g => box(g, { x: 28, y: 2.4, w: 5.6, d: 3.8, h: .3, c: '--z-apple', trace: 'live siri alexa muse' }));
+add(35.2 + 4.8, g => {
+  const b = box(g, { x: 34.2, y: 2.8, w: 2.2, d: 4, h: .22, c: '--vault', trace: 'live siri alexa muse' });
+  quad(b, 34.35, 2.95, .23, 1.9, 3.7, 'top', { class: 'wall' });
+  const cols = ['#fbe88f', '#f7b6c8', '#a9d4f5', '#b9e3a6'];
+  cols.forEach((c, i) => quad(b, 34.5 + (i % 2) * .85, 3.3 + Math.floor(i / 2) * 1.6, .24, .7, 1.2, 'top', { fill: c }));
+});
+
+items.sort((a, b) => a.depth - b.depth).forEach(i => i.fn(L.obj));
+
+// ---------- flows ----------
+const K = { siri: '--k-siri', alexa: '--k-alexa', muse: '--k-muse', ai: '--k-ai', write: '--k-write', push: '--k-push', asset: '--k-asset', key: '--k-key' };
+const chips = [];
+function flow({ a, b, lift, k, trace, label, reply, round, dur = 2.6, chipAt = .5, chipDy = -10 }) {
+  const n = 36, pp = [], sh = [];
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    const x = a[0] + (b[0] - a[0]) * t, y = a[1] + (b[1] - a[1]) * t, z = a[2] + (b[2] - a[2]) * t + lift * 4 * t * (1 - t);
+    pp.push(P(x, y, z)); sh.push(P(x, y, 0));
+  }
+  const d = 'M' + pp.map(p => p.map(f).join(' ')).join(' L');
+  const style = `--k:var(${K[k]})`;
+  const g = el('g', { class: 't-item', style }, L.flow); g.dataset.trace = trace;
+  el('path', { class: 'shadow', d: 'M' + sh.map(p => p.map(f).join(' ')).join(' L') }, L.shadow).classList.add('t-item');
+  L.shadow.lastChild.dataset.trace = trace;
+  if (!reply) el('path', { class: 'glow', d }, g);
+  el('path', { class: 'flow' + (reply ? ' reply' : ''), d }, g);
+  const dots = reply ? 1 : 2;
+  for (let j = 0; j < dots; j++) {
+    const c = el('circle', { class: 'packet', r: reply ? 3 : 4 }, g);
+    if (reduce) {
+      const m = pp[Math.round(n * (.35 + j * .3))]; c.setAttribute('cx', f(m[0])); c.setAttribute('cy', f(m[1]));
+    } else {
+      const am = el('animateMotion', { dur: `${dur}s`, repeatCount: 'indefinite', path: d, begin: `${-(j * dur / dots).toFixed(2)}s` }, c);
+      if (round) { am.setAttribute('keyPoints', '0;1;0'); am.setAttribute('keyTimes', '0;.5;1'); am.setAttribute('calcMode', 'linear'); }
+    }
+  }
+  if (label) chips.push({ at: pp[Math.round(n * chipAt)], label, style, trace, dy: chipDy });
+}
+const T = {
+  phone: [-1.75, 26.2, 5], worker: [8.5, 13.5, 3], ai: [8.2, 5.1, 2.6], vault: [4.9, 18.1, 1.7], doTop: [18.5, 12.5, 3.4],
+  echo: [9.8, 30.8, 2.5], cloud: [15.2, 29.2, 5.4], muse: [-5, 14.5, 5.2], assets: [18.7, 5.2, 1.4],
+  tv: [31.2, -1.8, 4.2], laptop: [30.8, 2.3, 3.4], phone2: [35.3, 4.8, .25], db: [21, 18.4, 1.9],
+};
+SRC.forEach(s => flow({ a: [-12.2, s.y + 1.3, 1.5], b: [-5.2, 14.5, 2.6], lift: 1.4, k: 'muse', trace: 'muse', dur: 2.2 }));
+flow({ a: T.muse, b: T.worker, lift: 5.5, k: 'muse', trace: 'muse', label: 'PUT /api/tasks · whole file', chipAt: .45 });
+flow({ a: T.phone, b: T.worker, lift: 6.5, k: 'siri', trace: 'siri', label: 'POST /api/tasks/command  {text}', chipAt: .6 });
+flow({ a: T.worker, b: [-1.2, 26.4, 4.4], lift: 3, k: 'siri', trace: 'siri', reply: true, label: '← {say, finished}', chipAt: .7, chipDy: 16 });
+flow({ a: T.echo, b: [14.8, 29.4, 4.4], lift: 2.2, k: 'alexa', trace: 'alexa', label: 'speech → intent', chipAt: .5, chipDy: -14 });
+flow({ a: T.cloud, b: T.worker, lift: 5, k: 'alexa', trace: 'alexa', label: 'POST /alexa · signed JSON', chipAt: .4 });
+flow({ a: [8.9, 14.2, 3], b: [14.2, 29.8, 4.2], lift: 2.2, k: 'alexa', trace: 'alexa', reply: true, label: '← outputSpeech', chipAt: .62, chipDy: 16 });
+flow({ a: [14.3, 30.2, 4.3], b: [10.4, 31.2, 2.5], lift: .8, k: 'alexa', trace: 'alexa', reply: true });
+flow({ a: [7.8, 12.6, 3], b: T.ai, lift: 3.2, k: 'ai', trace: 'siri alexa', round: true, dur: 3.4, label: 'Llama 3.3 70B → JSON', chipAt: .5, chipDy: -12 });
+flow({ a: [7, 15.6, 2.4], b: T.vault, lift: 1.6, k: 'key', trace: 'siri muse', round: true, dur: 2.4 });
+flow({ a: [10.2, 13.8, 3], b: T.doTop, lift: 2.6, k: 'write', trace: 'siri alexa muse', label: 'edit one line / save file', chipAt: .5, chipDy: -12 });
+flow({ a: [19.6, 14, 2.4], b: T.db, lift: .6, k: 'write', trace: 'siri alexa muse', round: true, dur: 2 });
+flow({ a: [19.2, 11.4, 3.4], b: T.tv, lift: 5.4, k: 'push', trace: 'siri alexa muse live', label: 'WebSocket /api/live · push', chipAt: .52, dur: 2.2 });
+flow({ a: [19.6, 12, 3.4], b: T.laptop, lift: 3.6, k: 'push', trace: 'siri alexa muse live', dur: 2.2 });
+flow({ a: [20, 12.8, 3.4], b: T.phone2, lift: 2.6, k: 'push', trace: 'siri alexa muse live', dur: 2.2 });
+flow({ a: T.assets, b: [29.6, -1.8, 5.6], lift: 3.4, k: 'asset', trace: 'live', label: 'GET / · /assets/*', chipAt: .28, chipDy: -12, dur: 3.2 });
+flow({ a: [29.4, 2.3, 3.9], b: [10.6, 12, 3], lift: 6.8, k: 'asset', trace: 'live', reply: true, label: 'GET /api/tasks · safety poll', chipAt: .42, chipDy: -12 });
+
+// chips (labels on flows)
+for (const c of chips) {
+  const g = el('g', { class: 'chip t-item', style: c.style }, L.chip); g.dataset.trace = c.trace;
+  const t = el('text', { x: f(c.at[0]), y: f(c.at[1] + c.dy), 'text-anchor': 'middle' }, g); t.textContent = c.label;
+  const bb = t.getBBox();
+  el('rect', { x: f(bb.x - 7), y: f(bb.y - 4), width: f(bb.width + 14), height: f(bb.height + 8), rx: 10 }, g).parentNode.insertBefore(g.lastChild, t);
+}
+
+// ---------- callouts ----------
+const CALL = [
+  { at: [-5, 14.5, 5.3], to: [-470, -137], side: 'r', t: 'Muse', l: ['Reads the family calendar and inboxes', 'Writes the whole tasks.md by the rules', 'Uploads it with the write key'], trace: 'muse' },
+  { at: [-13.5, 10.9, 1.2], to: [-560, -60], side: 'l', t: 'Apple Calendar', l: ['appointments, school events'], trace: 'muse' },
+  { at: [-13.5, 14.4, 1.2], to: [-560, -5], side: 'l', t: 'Gmail', l: ['school mail, deliveries'], trace: 'muse' },
+  { at: [-13.5, 17.9, 1.2], to: [-560, 50], side: 'l', t: 'Apple Mail', l: ['other accounts'], trace: 'muse' },
+  { at: [-3, 26.2, 4.2], to: [-610, 140], side: 'l', t: 'iPhone · Siri', l: ['“Hey Siri, Family Board”', 'loops: ask → send text → speak say', 'stops when finished = true'], trace: 'siri' },
+  { at: [8, 31.4, 1.6], to: [-470, 380], side: 'l', t: 'Echo Show', l: ['“Alexa, open Post It Board”', 'also shows the board in its browser'], trace: 'alexa' },
+  { at: [16.6, 29.2, 5.6], to: [-170, 440], side: 'r', t: 'Alexa cloud', l: ['speech → AddIntent, DoneIntent,', 'RemoveIntent, UndoIntent, AnswerIntent', 'signs every request (RSA-SHA256)'], trace: 'alexa' },
+  { at: [6, 12.6, 2.4], to: [-240, -137], side: 'r', t: 'Worker · worker.js', l: ['Routes every request', 'Checks the key or Amazon’s signature', 'Refuses money matters · trims to 39 chars'], trace: 'siri alexa muse live' },
+  { at: [6.6, 3.6, 2.6], to: [0, -137], side: 'r', t: 'Workers AI', l: ['@cf/meta/llama-3.3-70b-instruct-fp8-fast', 'answers in strict JSON:', 'action · group · task · question'], mono: 1, trace: 'siri alexa' },
+  { at: [4.2, 18.4, 1.7], to: [-175, 253], side: 'r', t: 'Secret TASKS_TOKEN', l: ['Bearer key for Siri & Muse', 'constant-time compare', 'never in code, files or chat'], trace: 'siri muse' },
+  { at: [21.6, 6.4, 1.4], to: [475, 440], side: 'r', t: 'Static assets · public/', l: ['index.html (Three.js board)', 'classic.html · tasks.md fallback', 'sprite sheets · keepawake.mp4'], trace: 'live' },
+  { at: [22, 12.4, 5.8], to: [300, -137], side: 'r', t: 'tasks.md — the one file', l: ['## groups · - [ ] tasks · - [x] done', 'stored as one string, ≤ 256 KB'], trace: 'siri alexa muse live' },
+  { at: [21, 11, 2.2], to: [230, 440], side: 'r', t: 'Durable Object “Board”', l: ['the single copy of the truth', 'keys: tasks · updatedAt · history · pending', 'holds every open WebSocket'], trace: 'siri alexa muse live' },
+  { at: [22, 18.4, 1.2], to: [70, 440], side: 'r', t: 'SQLite storage', l: ['durable, inside the object'], trace: 'siri alexa muse live' },
+  { at: [35.4, -1.8, 5.8], to: [590, 110], side: 'r', t: 'Fire TV · TV mode', l: ['wake lock + silent looping video', 'sharp at DPR 1 · max 2 butterflies'], trace: 'live siri alexa muse' },
+  { at: [33.6, 2.6, 3.4], to: [600, 235], side: 'r', t: 'Laptop browser', l: ['Three.js r160', 'redraws only when something moves'], trace: 'live siri alexa muse' },
+  { at: [36.4, 5.2, .2], to: [670, 420], side: 'r', t: 'Phone or tablet', l: ['same page, any browser'], trace: 'live siri alexa muse' },
+];
+for (const c of CALL) {
+  const [ax, ay] = P(...c.at);
+  const g = el('g', { class: 'callout t-item' }, L.call); g.dataset.trace = c.trace;
+  const [tx, ty] = c.to, left = c.side === 'l';
+  el('path', { class: 'lead', d: `M${f(ax)},${f(ay)} L${f(tx)},${f(ty)}` }, g);
+  el('circle', { class: 'dot', cx: f(ax), cy: f(ay), r: 2.6 }, g);
+  const anchor = left ? 'end' : 'start', ox = left ? -9 : 9;
+  const t = el('text', { x: f(tx + ox), y: f(ty + 4), 'text-anchor': anchor, class: 't' }, g); t.textContent = c.t;
+  c.l.forEach((s, i) => { const l = el('text', { x: f(tx + ox), y: f(ty + 20 + i * 14.5), 'text-anchor': anchor, class: 'l' + (c.mono && i === 0 ? ' mono' : '') }, g); l.textContent = s; });
+  const textBox = (() => { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; g.querySelectorAll('text').forEach(n => { const b = n.getBBox(); x0 = Math.min(x0, b.x); y0 = Math.min(y0, b.y); x1 = Math.max(x1, b.x + b.width); y1 = Math.max(y1, b.y + b.height); }); return { x0, y0, x1, y1 }; })();
+  const r = el('rect', { x: f(textBox.x0 - 9), y: f(textBox.y0 - 7), width: f(textBox.x1 - textBox.x0 + 18), height: f(textBox.y1 - textBox.y0 + 14), rx: 9 }, g);
+  g.insertBefore(r, t);
+}
+
+// fit the view
+const bb = (() => { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const g of [L.plat, L.obj, L.flow, L.chip, L.call]) { const b = g.getBBox(); x0 = Math.min(x0, b.x); y0 = Math.min(y0, b.y); x1 = Math.max(x1, b.x + b.width); y1 = Math.max(y1, b.y + b.height); }
+  return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 }; })(), pad = 14;
+svg.setAttribute('viewBox', `${f(bb.x - pad)} ${f(bb.y - pad)} ${f(bb.width + pad * 2)} ${f(bb.height + pad * 2)}`);
+
+// ---------- traces ----------
+const STEPS = {
+  all: { k: '--ink', name: 'The whole house', sum: 'Four ways in, one file, every screen updated at once.', steps: [
+    ['Three voices write', 'Siri and Alexa send one sentence at a time. Muse uploads the whole file after reading the calendar and mail.'],
+    ['One worker checks them', 'The Cloudflare worker checks the write key (Siri, Muse) or Amazon’s signature (Alexa), and refuses anything about money.'],
+    ['AI understands, code decides', 'Workers AI turns a sentence into JSON. The worker still checks the task exists before changing a line.'],
+    ['One object saves', 'The Durable Object “Board” stores tasks.md and is the only thing that writes it.'],
+    ['Every screen hears at once', 'The object pushes the new file down each open WebSocket. TV, laptop and phone repaint in well under a second.'],
+  ] },
+  siri: { k: '--k-siri', name: 'Siri', sum: 'A spoken sentence, a conversation, one changed line.', steps: [
+    ['You speak', '“Hey Siri, Family Board.” The shortcut asks what to update and dictates your answer.'],
+    ['iPhone sends it', 'One request with the key from a secure source.', 'POST /api/tasks/command\nAuthorization: Bearer ‹write key›\n{"text":"Add dentist Thursday at 4"}'],
+    ['Worker checks the key', 'Compared in constant time with the TASKS_TOKEN secret. Wrong or missing key gets 401.'],
+    ['Memory joins in', 'The object hands over the board, the last voice changes (6 h) and any open question (3 min), so “undo” and “the Thursday one” make sense.'],
+    ['Workers AI decides', 'Llama 3.3 70B answers in a fixed JSON shape.', '{"action":"add","group":"Appointments",\n "task":"Dentist – Thu 4pm","question":""}'],
+    ['Guards', 'Money refused, task trimmed to 39 characters, done/remove only if exactly one task matches.'],
+    ['One line changes', 'The object appends or ticks that line, keeps every other byte, saves and remembers the change.'],
+    ['Screens update', 'The new file goes down every WebSocket at once.'],
+    ['Siri answers', 'The shortcut speaks “say” and loops until “finished” is true.', '{"ok":true,"message":"Added “Dentist – Thu 4pm” to Appointments.",\n "say":"… Anything else?","finished":false,"boardsNotified":2}'],
+  ] },
+  alexa: { k: '--k-alexa', name: 'Alexa', sum: 'Amazon’s cloud turns speech into an intent; the worker reuses Siri’s brain.', steps: [
+    ['You speak', '“Alexa, open Post It Board” on the Echo Show, then “cross off the math packet”.'],
+    ['Alexa cloud matches', 'Speech becomes DoneIntent with the slot text = “the math packet”.'],
+    ['Signed request', 'Amazon posts JSON to the worker with Signature-256 and SignatureCertChainUrl headers.', 'POST /alexa\n{"request":{"type":"IntentRequest",\n  "intent":{"name":"DoneIntent",\n    "slots":{"text":{"value":"the math packet"}}}}}'],
+    ['Worker verifies', 'Timestamp within 150 s, certificate from Amazon’s echo.api bucket naming echo-api.amazon.com, RSA-SHA256 signature valid, skill ID matches.'],
+    ['Intent → sentence', 'DoneIntent becomes “cross off the math packet” and goes through the same AI, guards and object as Siri.'],
+    ['Screens update', 'Pushed over WebSocket, same as every other change.'],
+    ['Alexa speaks', 'The reply keeps the session open with “Anything else?” until you say no.', '{"version":"1.0","response":{\n "outputSpeech":{"type":"PlainText","text":"Crossed off …"},\n "shouldEndSession":false}}'],
+  ] },
+  muse: { k: '--k-muse', name: 'Muse', sum: 'The collector: reads calendars and mail, rewrites the file, uploads it whole.', steps: [
+    ['Muse collects', 'Reads Apple Calendar, Gmail and Apple Mail for appointments, school dates, deliveries and reminders.'],
+    ['Muse writes the file', 'Follows the house rules: ## groups, - [ ] tasks under 40 characters, ticks with [x], never duplicates a heading.'],
+    ['Uploads it whole', 'One PUT replaces the file.', 'PUT /api/tasks\nAuthorization: Bearer ‹write key›\nContent-Type: text/markdown\n\n# Family Board\n## Appointments\n- [ ] Dentist – Thu 4:15pm'],
+    ['Worker checks', 'Key, text/markdown type, UTF-8 and the 256 KB limit (401 · 415 · 400 · 413).'],
+    ['Object saves and pushes', 'setText stores tasks + updatedAt and sends the file to every open board.'],
+    ['Muse gets a summary', 'Counts to confirm the upload landed.', '{"ok":true,"groups":7,"openTasks":23,\n "doneTasks":2,"boardsNotified":2}'],
+  ] },
+  live: { k: '--k-push', name: 'Screens & refresh', sum: 'How a TV or laptop loads the board and stays current.', steps: [
+    ['Page loads', 'index.html from public/, Three.js r160 from the CDN, sprite sheets from /assets (cached).'],
+    ['Socket opens', 'The board connects to /api/live. The object accepts it (hibernating, so idle sockets cost nothing) and sends the current file straight away.', 'GET /api/live  (Upgrade: websocket)\n← "# Family Board\\n## Appointments\\n…"'],
+    ['Every change is pushed', 'The message is the Markdown itself, not JSON. The board compares it with the last text and repaints only what changed.'],
+    ['Keep-alive', 'A “ping” every 30 s gets “pong” from Cloudflare without waking the object.'],
+    ['Safety net', 'GET /api/tasks every 60 s while the socket is up; every 2 s if it drops (15 s when the tab is hidden). Reconnect waits 1 s, doubling to 60 s.'],
+    ['Local clock', 'Light tint every 5 min, done post-its peel after 3 h, TODAY/OVERDUE and seasons repaint at midnight.'],
+  ] },
+};
+const stepsEl = document.getElementById('steps');
+const esc = s => s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+function show(id) {
+  const s = STEPS[id];
+  stepsEl.style.setProperty('--k', `var(${s.k})`);
+  stepsEl.innerHTML = `<div class="head"><h3><i></i>${s.name}</h3><p class="sum">${s.sum}</p></div><ol>` +
+    s.steps.map(([b, t, c]) => `<li><div><b>${esc(b)}</b><span>${esc(t)}</span>${c ? `<code>${esc(c)}</code>` : ''}</div></li>`).join('') + '</ol>';
+  svg.classList.toggle('tracing', id !== 'all');
+  svg.querySelectorAll('.t-item').forEach(n => n.classList.toggle('on', id === 'all' || (n.dataset.trace || '').split(' ').includes(id)));
+  document.querySelectorAll('.traces button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.trace === id)));
+}
+document.querySelectorAll('.traces button').forEach(b => b.addEventListener('click', () => show(b.dataset.trace)));
+show('all');
+
+// ---------- reference content ----------
+const md = `# Family Board
+<!-- Muse: keep tasks under 40 characters -->
+
+## Appointments
+- [ ] Dentist – Thu Dec 3 4:15pm
+- [x] Eye test – Mon 9:00am
+
+## School
+- [ ] Math packet – due Dec 9
+- [ ] Book fair – 12 Dec
+Remember: library books on Fridays
+
+## Reminders
+- [ ] Check Disney bundle – Tue-Wed`;
+document.getElementById('mdsample').innerHTML = esc(md).split('\n').map(l =>
+  /^#/.test(l) ? `<span class="h">${l}</span>` :
+  /^- \[x\]/.test(l) ? `<span class="x">${l}</span>` :
+  /^- \[ \]/.test(l) ? `<span class="o">${l}</span>` :
+  /^&lt;!--/.test(l) ? `<span class="c">${l}</span>` : l).join('\n');
+
+const hj = s => esc(s).replace(/("(?:[^"\\]|\\.)*")(\s*:)?|\b(\d+|true|false|null)\b/g, (m, str, colon, lit) =>
+  str ? (colon ? `<span class="k">${str}</span>${colon}` : `<span class="s">${str}</span>`) : `<span class="n">${lit}</span>`);
+const WIRE = [
+  { k: '--k-siri', tag: 'Siri · one sentence', req: 'POST /api/tasks/command', reqBody: '{"text": "Cross off the Disney bundle"}',
+    res: '{"ok": true, "action": "done", "group": "Reminders",\n "task": "Check Disney bundle – Tue-Wed",\n "message": "Crossed off “Check Disney bundle – Tue-Wed” in Reminders.",\n "say": "… Anything else?", "finished": false,\n "openTasks": 22, "boardsNotified": 2}',
+    note: 'Needs more? ok is false, needsAnswer is true and message is the question.' },
+  { k: '--k-alexa', tag: 'Alexa · signed', req: 'POST /alexa', reqBody: '{"version": "1.0",\n "session": {"new": false, "application":\n   {"applicationId": "amzn1.ask.skill.…"}},\n "request": {"type": "IntentRequest",\n   "timestamp": "2026-11-24T18:02:11Z",\n   "intent": {"name": "AddIntent",\n     "slots": {"text": {"value": "milk"}}}}}',
+    res: '{"version": "1.0", "response": {\n  "outputSpeech": {"type": "PlainText",\n    "text": "Added \\"Milk\\" to Groceries. Anything else?"},\n  "reprompt": {"outputSpeech": {…}},\n  "shouldEndSession": false}}',
+    note: 'A one-shot (“Alexa, tell Post It Board to add milk”) ends the session after the change.' },
+  { k: '--k-muse', tag: 'Muse · whole file', req: 'PUT /api/tasks   (text/markdown)', reqBody: '# Family Board\n\n## Appointments\n- [ ] Dentist – Thu Dec 3 4:15pm\n…',
+    res: '{"ok": true, "groups": 7, "openTasks": 23,\n "doneTasks": 2, "boardsNotified": 2, …}',
+    note: 'Errors: 401 key · 415 not text/markdown · 413 over 256 KB · 400 empty or not UTF-8.' },
+  { k: '--k-ai', tag: 'Workers AI · inside the worker', req: 'env.AI.run(llama-3.3-70b, json_schema)', reqBody: '{"messages": [board, history, pending,\n   "Add dentist Thursday at 4"],\n "response_format": {"type": "json_schema", …}}',
+    res: '{"action": "add", "group": "Appointments",\n "task": "Dentist – Thu 4pm", "question": ""}',
+    note: 'Actions: add · done · reopen · remove · finish · unknown. The worker double-checks before editing.' },
+  { k: '--k-write', tag: 'Quick capture · add / done / remove', req: 'POST /api/tasks/add', reqBody: '{"group": "School",\n "task": "Remind me that Sam has a parent-teacher\n          meeting at school on Wednesday at 6pm"}',
+    res: '{"ok": true, "group": "School",\n "task": "Sam parent-teacher mtg – Wed 6pm",\n "openTasks": 24, "boardsNotified": 2}',
+    note: '/done and /remove take {group, task} with part of the task text; 404 none, 409 more than one.' },
+  { k: '--k-push', tag: 'Live push · to every screen', req: 'WebSocket /api/live', reqBody: '→ "ping"   (every 30 s)\n← "pong"   (answered by Cloudflare)',
+    res: '← "# Family Board\\n\\n## Appointments\\n- [ ] Dentist …"',
+    note: 'The push is the Markdown file itself. GET /api/tasks/list gives JSON groups for Shortcuts.' },
+];
+document.getElementById('wire').innerHTML = WIRE.map(w => `
+  <div class="sheet" style="--k:var(${w.k})">
+    <div class="tag">${w.tag}</div>
+    <div class="dir">→ ${esc(w.req)}</div>
+    <pre>${/^[{\[]/.test(w.reqBody) ? hj(w.reqBody) : esc(w.reqBody)}</pre>
+    <div class="dir">← response</div>
+    <pre>${/^[{\[]/.test(w.res) ? hj(w.res) : esc(w.res)}</pre>
+    <p class="note">${esc(w.note)}</p>
+  </div>`).join('');
+
+const ROUTES = [
+  ['GET HEAD', '/api/tasks', 'Every screen (safety poll), Muse, people', 'none', 'Returns tasks.md as text.', '--k-asset'],
+  ['PUT', '/api/tasks', 'Muse, hand edits', 'Bearer key', 'Replaces the whole file (text/markdown, ≤ 256 KB) and pushes it.', '--k-muse'],
+  ['POST', '/api/tasks/command', 'Siri shortcut', 'Bearer key', 'AI picks add, done, reopen, remove or finish; keeps the conversation.', '--k-siri'],
+  ['POST', '/alexa', 'Alexa cloud', 'Amazon signature + skill ID', 'Intent → sentence → same brain as /command; replies in Alexa JSON.', '--k-alexa'],
+  ['POST', '/api/tasks/add', 'Quick-capture shortcuts', 'Bearer key', 'AI shortens the task, appends it under an existing heading.', '--k-write'],
+  ['POST', '/api/tasks/done', 'Shortcuts', 'Bearer key', 'Turns - [ ] into - [x] for exactly one matching task.', '--k-write'],
+  ['POST', '/api/tasks/remove', 'Shortcuts', 'Bearer key', 'Deletes exactly one matching line.', '--k-write'],
+  ['GET', '/api/tasks/list', 'Shortcuts (Choose from List)', 'none', 'JSON list of groups, or open and all tasks in one group.', '--k-asset'],
+  ['GET', '/api/live', 'Every open board', 'none (read-only)', 'WebSocket; the object pushes the file on connect and after every save.', '--k-push'],
+  ['GET', '/ · /classic · /assets/*', 'Browsers, Fire TV', 'none', 'Static files from public/. /three redirects to /.', '--k-asset'],
+];
+document.getElementById('routes').innerHTML = ROUTES.map(([m, p, who, g, what, k]) =>
+  `<tr><td style="--k:var(${k})">${m.split(' ').map(x => `<span class="m">${x}</span>`).join('')}<br><code>${esc(p)}</code></td><td>${esc(who)}</td><td class="auth">${esc(g)}</td><td>${esc(what)}</td></tr>`).join('');
+
+const GUARDS = [
+  ['Write key', 'TASKS_TOKEN lives only as a Cloudflare secret. Compared in constant time; never in code, files, the page or chat.', '--k-key'],
+  ['Amazon signature', 'Certificate URL, validity dates, echo-api.amazon.com name, RSA-SHA256 signature, 150 s freshness and the skill ID are all checked.', '--k-alexa'],
+  ['No money talk', 'Payments, amounts due, failed transactions and bank or card details are refused before anything is written.', '--k-ai'],
+  ['One line at a time', 'Voice edits change exactly one matching line; every other byte (even line endings) stays as it was.', '--k-write'],
+  ['Short and tidy', 'Tasks trimmed to 39 characters, duplicates skipped, no new groups created by voice.', '--k-siri'],
+  ['Bounded', 'Uploads up to 256 KB, Alexa bodies up to 64 KB, UTF-8 only. Optional ALEXA_USERS allow-list.', '--k-asset'],
+];
+document.getElementById('guards').innerHTML = GUARDS.map(([b, s, k]) => `<div style="--k:var(${k})"><b>${b}</b><span>${s}</span></div>`).join('');
+
+const PIPE = [
+  ['Markdown text', 'from the socket or poll'], ['Read groups', '## headings, tasks, notes, comments'], ['Split', 'fill each post-it at full handwriting size'],
+  ['Arrange', 'tidy rows, split notes side by side'], ['Paint', 'canvas textures: handwriting, doodles, TODAY, OVERDUE'], ['Three.js', 'bendable paper, pins, plants, shadows'],
+  ['Render on demand', 'GPU rests when nothing moves'],
+];
+document.getElementById('pipe').innerHTML = PIPE.map(([b, s], i) => `${i ? '<span class="arrow" aria-hidden="true">→</span>' : ''}<div class="p"><b>${b}</b><span>${s}</span></div>`).join('');
+
+// ---------- clock (log timeline) ----------
+const clock = document.getElementById('clock');
+const W = 1000, X0 = 40, X1 = 960, AY = 130, lo = -1, hi = Math.log10(86400);
+const lx = s => X0 + (Math.log10(s) - lo) / (hi - lo) * (X1 - X0);
+const cg = el('g', {}, clock);
+el('line', { x1: X0, x2: X1, y1: AY, y2: AY, stroke: 'var(--ink)', 'stroke-width': 1.5 }, cg);
+[[0.1, '0.1 s'], [1, '1 s'], [10, '10 s'], [60, '1 min'], [600, '10 min'], [3600, '1 h'], [86400, '1 day']].forEach(([s, t]) => {
+  el('line', { x1: f(lx(s)), x2: f(lx(s)), y1: AY - 4, y2: AY + 4, stroke: 'var(--muted)' }, cg);
+  const tx = el('text', { x: f(lx(s)), y: AY + 18, 'text-anchor': s === 86400 ? 'end' : 'middle', 'font-size': 10.5, 'font-family': 'IBM Plex Mono, monospace', style: 'fill:var(--muted)' }, cg); tx.textContent = t;
+});
+// reconnect backoff band
+el('rect', { x: f(lx(1)), y: AY - 3, width: f(lx(60) - lx(1)), height: 6, rx: 3, style: 'fill:var(--k-asset)', opacity: .45 }, cg);
+const TIERS = { A1: -34, A2: -78, A3: -118, B1: 46, B2: 90, B3: 130 };
+const MARKS = [
+  [0.1, 'A1', 'instant', 'WebSocket push to every screen', '--k-push'],
+  [1, 'B3', '1 s → 60 s', 'reconnect wait, doubling', '--k-asset'],
+  [2, 'B1', '2 s', 'poll if the socket is down', '--k-asset'],
+  [15, 'A2', '15 s', 'poll while the tab is hidden', '--k-asset'],
+  [30, 'B2', '30 s', 'keep-alive ping · done-note check', '--k-push'],
+  [60, 'A1', '60 s', 'safety poll while live', '--k-asset'],
+  [150, 'B1', '150 s', 'Alexa request must be newer', '--k-alexa'],
+  [180, 'A3', '3 min', 'follow-up question remembered', '--k-siri'],
+  [300, 'B3', '5 min', 'light & tint refresh', '--k-write'],
+  [10800, 'A1', '3 h', 'all-done post-it peels off', '--k-write'],
+  [21600, 'B2', '6 h', '“undo” / “the last one” memory', '--k-siri'],
+  [86400, 'A2', 'midnight', 'TODAY · OVERDUE · season repaint', '--k-muse'],
+];
+for (const [s, tier, v, d, k] of MARKS) {
+  const x = lx(s), dy = TIERS[tier], up = dy < 0, end = s >= 80000;
+  const g = el('g', { style: `--k:var(${k})` }, cg);
+  el('line', { x1: f(x), x2: f(x), y1: AY, y2: AY + dy + (up ? 6 : -14), stroke: 'var(--k)', 'stroke-width': 1.2, 'stroke-dasharray': '2 3' }, g);
+  el('circle', { cx: f(x), cy: AY, r: 5, style: 'fill:var(--k)', stroke: 'var(--panel)', 'stroke-width': 2 }, g);
+  const t1 = el('text', { x: f(x + (end ? -4 : 4)), y: AY + dy - (up ? 10 : 0), 'text-anchor': end ? 'end' : 'start', 'font-size': 13, 'font-weight': 700, 'font-family': 'Bricolage Grotesque, system-ui, sans-serif', style: 'fill:var(--k)' }, g); t1.textContent = v;
+  const t2 = el('text', { x: f(x + (end ? -4 : 4)), y: AY + dy + (up ? 4 : 14), 'text-anchor': end ? 'end' : 'start', 'font-size': 11.5 }, g); t2.textContent = d;
+}
+const cb = cg.getBBox();
+clock.setAttribute('viewBox', `${f(cb.x - 12)} ${f(cb.y - 10)} ${f(cb.width + 24)} ${f(cb.height + 20)}`);
+})();
+</script>

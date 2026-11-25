@@ -1,0 +1,35 @@
+<!--TIMING {"pre": 0.8, "gap": 0.7, "post": 1.4} -->
+<!--SFX [["pop", "c(1)+0.9", 0.35], ["pop", "c(1)+2.6", 0.35], ["pop", "c(1)+4.6", 0.35], ["pop", "c(2)+0.6", 0.4], ["pop", "c(3)+0.5", 0.35], ["whoosh-short", "c(4)-0.2", 0.4]] -->
+<style>
+#root { background: #e7ebf0; }
+#w-host { position: absolute; left: 0; top: 0; }
+</style>
+<body>
+  <div id="w-host"></div>
+</body>
+<script>
+const host = $('#w-host');
+const W = isoWorld(host, { prefix: 'wd' });
+W.setCam(tl, 'all', 0.97, 0, 40);
+W.hideFlows();
+for (const z in W.zones) tl.fromTo(W.zones[z], { opacity: 0 }, { opacity: 0.14, duration: 0.8 }, 0.1);
+const ti = caption(ROOT, 'The architecture, end to end', { top: 60, size: 88, bare: true, w: 1700 });
+wordsIn(tl, ti, at(0) - 0.2);
+out(tl, ti, at(4) - 0.4);
+const rise = (z, t) => tl.fromTo(W.zones[z], { opacity: 0.14, y: 120 }, { opacity: 1, y: 0, duration: 1.0, ease: 'expo.out', immediateRender: false }, t);
+const labels = [];
+const lab = (txt, col, p, t, sub) => { const el = tag(ROOT, txt, col, worldScreen(W, p), { sub }); show(tl, el, t + 0.25, 0.6, { y: 20 }); labels.push(el); };
+rise('apple', at(1) + 0.8);  lab('Apple · Siri', COL.siri, [-2, 28, 7], at(1) + 0.8);
+rise('amazon', at(1) + 2.5); lab('Amazon · Alexa', COL.alexa, [13, 31, 7.5], at(1) + 2.5);
+rise('muse', at(1) + 4.8);   lab("Meta's AI assistant Muse", COL.muse, [-8, 14.5, 7], at(1) + 4.8);
+rise('cf', at(2) + 0.5);     lab('Cloudflare edge', COL.zCf, [13, 9, 8.5], at(2) + 0.5);
+rise('screens', at(3) + 0.4); lab('Every screen', COL.zScreen, [31, 0, 8], at(3) + 0.4);
+// every connection, drawn in one sweep
+Object.keys(W.flows).forEach((id, i) => W.draw(tl, id, end(3) + 0.1 + i * 0.07, 1.0));
+labels.forEach(l => out(tl, l, at(4) - 0.2));
+// dive to the file at the centre
+W.move(tl, 'sheet', 1.9, at(4) - 0.1, 2.4, 0, 120);
+W.focusOnly(tl, ['sheet', 'do'], [], at(4) + 0.6, 0.8);
+const ft = tag(ROOT, 'tasks.md', COL.write, [960, 250], { size: 46, sub: 'one small text file' });
+show(tl, ft, at(4) + 1.6, 0.7, { y: 24 });
+</script>

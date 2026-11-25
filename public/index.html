@@ -1,0 +1,1555 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Family Board</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;600&family=Kaushan+Script&family=Patrick+Hand&family=Gochi+Hand&family=Kalam&display=swap" rel="stylesheet">
+<script>
+  /* Same settings as the main board. URL extras: ?perf=1 shows a frame counter,
+     ?breeze=1 keeps every note gently moving all the time (to compare the cost). */
+  window.BOARD_CONFIG = {
+    src: 'api/tasks', pollMs: 2000, headers: {}, credentials: 'same-origin',
+    doneHours: 3, boardTitle: 'The Family Board'
+  };
+</script>
+<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }</script>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #efe6d6; }
+  canvas#gl { display: block; position: fixed; inset: 0; width: 100%; height: 100%; }
+  #status, #perf {
+    position: fixed; bottom: 10px; z-index: 5; pointer-events: none;
+    font: 12px/1.3 -apple-system, system-ui, sans-serif; color: #8a857b;
+  }
+  #status { right: 14px; opacity: 0; transition: opacity .4s; }
+  #status.show { opacity: .9; }
+  #perf { left: 14px; background: rgba(255,255,255,.6); padding: 3px 7px; border-radius: 6px; display: none; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+</style>
+</head>
+<body>
+<canvas id="gl" aria-hidden="true"></canvas>
+<div id="sr" class="sr" aria-live="polite"></div>
+<div id="status" role="status"></div>
+<div id="perf"></div>
+<script type="module">
+import * as THREE from 'three';
+
+const CONFIG = Object.assign({ src: 'api/tasks', fallbackSrc: 'tasks.md', pollMs: 2000, headers: {}, credentials: 'same-origin', doneHours: 3, boardTitle: 'The Family Board' }, window.BOARD_CONFIG || {});
+const qs = new URLSearchParams(location.search);
+if (qs.get('src'))  CONFIG.src = qs.get('src');
+if (qs.get('poll')) CONFIG.pollMs = Math.max(1000, +qs.get('poll') * 1000);
+if (qs.get('doneHours') != null && !isNaN(+qs.get('doneHours'))) CONFIG.doneHours = Math.max(0, +qs.get('doneHours'));
+const BREEZE = qs.get('breeze') === '1';
+const PERF = qs.get('perf') === '1';
+// TV mode: on automatically on a Fire TV (its browser reports an "AFT…" device), or force it with ?tv=1 / ?tv=0.
+// Keeps the screen awake and renders lighter for a TV stick's graphics chip.
+const TV = qs.get('tv') === '1' || (qs.get('tv') !== '0' && /\bAFT[A-Z0-9]*\b/.test(navigator.userAgent));
+
+// ---------- the board's clock — preview another moment with ?date=2026-12-24&time=21:30 ----------
+const CLOCK_OFFSET = (() => {
+  const d = qs.get('date'), t = qs.get('time');
+  if (!d && !t) return 0;
+  const now = new Date(), target = new Date(now);
+  if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) { const [y, m, dd] = d.split('-').map(Number); target.setFullYear(y, m - 1, dd); }
+  if (t && /^\d{1,2}:\d{2}$/.test(t)) { const [h, mi] = t.split(':').map(Number); target.setHours(h, mi, 0, 0); }
+  return target - now;
+})();
+const nowDate = () => new Date(Date.now() + CLOCK_OFFSET);
+const dayStart = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+const DAY_MS = 86400000;
+
+// ---------- reading the dates in a task ----------
+// Understands "Fri Dec 4", "12 Dec", "Dec 31 to Jan 2", "due Dec 9", "from Mon Nov 30",
+// "today", "tomorrow" and plain weekdays ("Wed 6pm", "Tue-Wed").
+const MONTH_IX = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
+const MONTHS = 'jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?';
+const WEEKDAY_IX = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
+const WEEKDAYS = /\b(sun(?:day)?|mon(?:day)?|tue(?:s|sday)?|wed(?:s|nesday)?|thu(?:r|rs|rsday)?|fri(?:day)?|sat(?:urday)?)\b/g;
+const DATE_RE = new RegExp(`\\b(${MONTHS})\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?\\b|\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+(${MONTHS})\\b`, 'g');
+function taskWhen(text, today) {
+  const t = text.toLowerCase(), found = [];
+  let m;
+  DATE_RE.lastIndex = 0;
+  while ((m = DATE_RE.exec(t))) {
+    const mon = MONTH_IX[(m[1] || m[4]).slice(0, 3)], day = +(m[2] || m[3]);
+    if (day < 1 || day > 31) continue;
+    let best = null;                                   // the year that puts it nearest to today
+    for (const y of [today.getFullYear() - 1, today.getFullYear(), today.getFullYear() + 1]) {
+      const d = new Date(y, mon, day);
+      if (!best || Math.abs(d - today) < Math.abs(best - today)) best = d;
+    }
+    found.push({ d: best, i: m.index, end: m.index + m[0].length });
+  }
+  const w = { dates: [], range: null, from: /\b(from|starting|since)\b/.test(t), days: [] };
+  if (found.length >= 2 && /\bto\b|–|—|-|\buntil\b|\bthru\b|\bthrough\b/.test(t.slice(found[0].end, found[1].i))) {
+    let a = found[0].d, b = found[1].d;
+    if (b < a) b = new Date(b.getFullYear() + 1, b.getMonth(), b.getDate());
+    w.range = [a, b];
+  } else w.dates = found.map(f => f.d);
+  if (/\b(today|tonight)\b/.test(t)) w.dates.push(today);
+  if (/\btomorrow\b/.test(t)) w.dates.push(addDays(today, 1));
+  if (!found.length) { WEEKDAYS.lastIndex = 0; while ((m = WEEKDAYS.exec(t))) w.days.push(WEEKDAY_IX[m[1].slice(0, 3)]); }
+  return w;
+}
+// Something to DO has a deadline (overdue when missed); anything else with a past date is just an event that happened.
+const ACTION_WORDS_RE = /\b(due|deadline|submit|turn in|hand in|return|sign|send|buy|order|book (?:a|an|the|tickets?|flights?|hotel|appointment)|call|pay|renew|register|rsvp|schedule|fill|finish|complete|bring|pick up|drop off|reply|email|list|form|apply)\b/;
+// 'today' | 'tomorrow' | 'overdue' | 'past' | null — only for open tasks
+function taskStatus(item, now = nowDate()) {
+  if (!item.task || item.done) return null;
+  const today = dayStart(now), tomorrow = addDays(today, 1);
+  const same = (a, b) => a.getTime() === b.getTime();
+  const w = taskWhen(item.text, today);
+  if (w.range) {
+    if (today >= w.range[0] && today <= w.range[1]) return 'today';
+    if (same(w.range[0], tomorrow)) return 'tomorrow';
+    return today > w.range[1] ? (ACTION_WORDS_RE.test(item.text.toLowerCase()) ? 'overdue' : 'past') : null;
+  }
+  if (w.dates.length) {
+    if (w.dates.some(d => same(d, today))) return 'today';
+    if (w.dates.some(d => same(d, tomorrow))) return 'tomorrow';
+    if (!w.from && w.dates.every(d => d < today)) return ACTION_WORDS_RE.test(item.text.toLowerCase()) ? 'overdue' : 'past';
+    return null;
+  }
+  if (w.days.length) {                                 // weekday only: this week's
+    if (w.days.includes(today.getDay())) return 'today';
+    if (w.days.includes(tomorrow.getDay())) return 'tomorrow';
+  }
+  return null;
+}
+
+// ---------- seasons and holidays ----------
+function seasonAt(d) {
+  const m = d.getMonth(), day = d.getDate(), y = d.getFullYear(), today = dayStart(d);
+  const nov1 = new Date(y, 10, 1).getDay(), thanksgiving = new Date(y, 10, 1 + ((4 - nov1 + 7) % 7) + 21);   // 4th Thursday of November
+  let holiday = null;
+  if ((m === 11 && day >= 18) || (m === 0 && day <= 1)) holiday = 'christmas';
+  else if (m === 1 && day >= 7 && day <= 14) holiday = 'valentine';
+  else if (m === 9) holiday = 'halloween';
+  else if (today >= addDays(thanksgiving, -6) && today <= addDays(thanksgiving, 1)) holiday = 'thanksgiving';
+  const season = (m === 11 || m <= 1) ? 'winter' : m <= 4 ? 'spring' : m <= 7 ? 'summer' : 'autumn';
+  return { season, holiday };
+}
+let SEASON = seasonAt(nowDate());
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const statusEl = document.getElementById('status');
+const perfEl = document.getElementById('perf');
+const srEl = document.getElementById('sr');
+const setStatus = (msg) => { statusEl.textContent = msg; statusEl.classList.toggle('show', !!msg); };
+
+// ---------- helpers ----------
+const hash = (s) => { let h = 2166136261 >>> 0; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; };
+const rng = (seed) => () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+const store = {
+  get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
+};
+const DEG = Math.PI / 180;
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+// ---------- the same look as the main board ----------
+const PAPERS = ['#fbe88f', '#f9c4d3', '#fcd4a9', '#c9e3f4', '#ddd0f3', '#d4ecbf', '#f7b8c8'];
+const INKS   = ['#1f2b5e', '#1d1c24', '#22357a', '#2b2420', '#163b66'];
+const FONTS  = [
+  { f: "'Patrick Hand', cursive", s: 1.02, w: 400, lh: 1.12 },
+  { f: "'Kalam', cursive",        s: 0.94, w: 400, lh: 1.2 },
+  { f: "'Gochi Hand', cursive",   s: 1.02, w: 400, lh: 1.1 },
+  { f: "'Caveat', cursive",       s: 1.14, w: 600, lh: 1.0 },
+];
+const PINS = ['#ef5b9c', '#f28c28', '#f5c518', '#22a6d8', '#8e5bd6', '#2fae5a', '#e0453d', '#18a39a'];
+const ACCENT = '#d8433d';
+
+// ---------- little marker doodles (bold outline, bright fill, a white highlight) ----------
+const HL = (d) => `<path d="${d}" stroke="#fff" stroke-opacity=".8" stroke-width="2.2"/>`;
+const petals = (c, rx = 6.6, ry = 8.4, cy = 13.8) => [0, 72, 144, 216, 288].map(a => `<ellipse cx="24" cy="${cy}" rx="${rx}" ry="${ry}" transform="rotate(${a} 24 24)" fill="${c}"/>`).join('');
+const LEAVES2 = '<path d="M10 34c-6 0-8-5-7-9 5-1 9 2 10 7zM38 34c6 0 8-5 7-9-5-1-9 2-10 7z" fill="#3fa34d"/>';
+const bloom = (c, core = '#f5b818') => LEAVES2 + petals(c) + `<circle cx="24" cy="24" r="4.6" fill="${core}"/>`;
+const ICONS = {
+  flower: bloom('#f47bb2'),
+  flowerBlue: bloom('#3b8fe0'),
+  flowerYellow: bloom('#f7c614', '#f08a1c'),
+  hibiscus: petals('#e8352d', 8, 9.5, 14.5) + '<path d="M24 24l7-9" stroke="#f5b818" stroke-width="2.4"/><circle cx="31.5" cy="14.5" r="2" fill="#f5b818" stroke-width="1.4"/>',
+  leaves: '<path d="M10 42 36 12"/><path d="M17 34c-7 1-11-3-11-7 6-2 10 1 11 7zM22 28c-2-7 1-11 6-12 2 6-1 10-6 12zM27 23c-7 1-10-3-10-7 6-2 9 1 10 7zM31 18c-1-6 2-9 6-10 2 5 0 9-6 10z" fill="#3fa34d"/>',
+  heart: '<path d="M24 41C10 31 6 23 9 16.5c3-6 11-6 15 .5 4-6.5 12-6.5 15-.5 3 6.5-1 14.5-15 24.5z" fill="#ef3b4f"/>' + HL('M13 18c1-2 3-3 5-3'),
+  sweater: '<path d="M17 8l-9 5-5 15 6 2 3-6v18h24V24l3 6 6-2-5-15-9-5c-1 4-4 6-7 6s-6-2-7-6z" fill="#3b8fe0"/><path d="M12 39h24M17 8c1 4 4 6 7 6s6-2 7-6" stroke-width="1.8"/><path d="M24 20l1.8 3.6 4 .6-2.9 2.8.7 4-3.6-1.9-3.6 1.9.7-4-2.9-2.8 4-.6z" fill="#f7c614" stroke-width="1.4"/>',
+  pumpkin: '<path d="M24 15c-10 0-18 6-18 15s8 13 18 13 18-4 18-13-8-15-18-15z" fill="#f28a1d"/><path d="M24 15c-4.5 0-7.5 7-7.5 15s3 13 7.5 13M24 15c4.5 0 7.5 7 7.5 15s-3 13-7.5 13" stroke="#c45d10" stroke-width="2"/><path d="M24 15c0-4 1.2-6.5 3.5-8.5" stroke="#5b7f35" stroke-width="3.2"/><path d="M27 10c3-3.5 8.5-3.5 10.5-.5-3 2.5-7.5 3.5-10.5.5z" fill="#3fa34d" stroke-width="1.6"/>',
+  cane: '<path d="M17 43V17a8 8 0 0 1 16 0v4" stroke-width="8.4"/><path d="M17 43V17a8 8 0 0 1 16 0v4" stroke="#fff" stroke-width="5.4"/><path d="M17 43V17a8 8 0 0 1 16 0v4" stroke="#e8352d" stroke-width="5.4" stroke-dasharray="3.2 4" stroke-linecap="butt"/>',
+  gift: '<rect x="9" y="21" width="30" height="20" rx="2" fill="#fff"/><g fill="#e8352d" stroke="none"><circle cx="14" cy="27" r="1.6"/><circle cx="14" cy="35" r="1.6"/><circle cx="33" cy="27" r="1.6"/><circle cx="34" cy="35" r="1.6"/></g><rect x="7" y="15" width="34" height="7" rx="2" fill="#e8352d"/><path d="M24 15v26" stroke="#f7c614" stroke-width="5"/><path d="M24 15c-4-7-12-7-11-2 1 3 7 3 11 2zM24 15c4-7 12-7 11-2-1 3-7 3-11 2z" fill="#f7c614"/>',
+  book: '<path d="M4 14v24c7-2 14-1 20 3 6-4 13-5 20-3V14" fill="#3b8fe0"/><path d="M24 14c-5-4-12-4-17-2v24c5-2 12-2 17 2z" fill="#fff6dd"/><path d="M24 14c5-4 12-4 17-2v24c-5-2-12-2-17 2z" fill="#fff6dd"/><path d="M11 19c3-1 7-1 9 1M11 24c3-1 7-1 9 1M11 29c3-1 7-1 9 1M28 20c2-2 6-2 9-1M28 25c2-2 6-2 9-1M28 30c2-2 6-2 9-1" stroke="#9a8f7a" stroke-width="1.4"/>',
+  apple: '<path d="M24 16c-6-4-16-1-16 9 0 9 6 17 10 17 2 0 4-1 6-1s4 1 6 1c4 0 10-8 10-17 0-10-10-13-16-9z" fill="#e8352d"/><path d="M24 16c0-4 1-7 3-9" stroke="#7a4a2a" stroke-width="2.6"/><path d="M26.5 11c3-4.5 8.5-5 11-2.5-3 3.5-8 5-11 2.5z" fill="#3fa34d"/>' + HL('M14 22c-1.5 2-1.6 4.5-.6 6.5'),
+  trees: '<path d="M15 6 5 31h20zM33 11l-9 25h18z" fill="#2e9c46"/><path d="M10 22l5-3 5 3M27 26l6-3 6 3" stroke-width="1.6"/><rect x="13" y="31" width="4" height="9" fill="#8a5a3c"/><rect x="31" y="36" width="4" height="7" fill="#8a5a3c"/>',
+  bike: '<g stroke="#2f7fd8" stroke-width="3"><circle cx="11" cy="31" r="7.5"/><circle cx="37" cy="31" r="7.5"/><path d="M11 31l8-13h13l5 13M19 18l6 13 7-13M17 14h6M32 18l-1.5-5h4"/></g>',
+  gradcap: '<path d="M12 22v9c0 3 5 6 12 6s12-3 12-6v-9l-12 5z" fill="#2569b8"/><path d="M3 18 24 10l21 8-21 8z" fill="#3b8fe0"/><path d="M24 18l13 3v12" stroke="#f5b818" stroke-width="2.2"/><path d="M35 33h4l-.8 6h-2.4z" fill="#f5b818" stroke-width="1.6"/>',
+  books: '<rect x="6" y="31" width="34" height="9" rx="2" fill="#e8352d"/><rect x="9" y="22" width="32" height="9" rx="2" fill="#e8352d"/><rect x="6" y="12" width="34" height="10" rx="2" fill="#3b8fe0"/><path d="M34 33.5h4M37 24.5h3M34 14.5h4" stroke="#fff6dd" stroke-width="3"/>',
+  calendar: '<rect x="7" y="11" width="34" height="31" rx="5" fill="#fff"/><path d="M7 16a5 5 0 0 1 5-5h24a5 5 0 0 1 5 5v5H7z" fill="#e8352d"/><path d="M16 6v9M32 6v9"/><g fill="#c9ccd3" stroke="none"><rect x="12" y="25" width="5" height="4" rx="1"/><rect x="21.5" y="25" width="5" height="4" rx="1"/><rect x="31" y="25" width="5" height="4" rx="1"/><rect x="12" y="33" width="5" height="4" rx="1"/><rect x="21.5" y="33" width="5" height="4" rx="1"/><rect x="31" y="33" width="5" height="4" rx="1"/></g>',
+  alarm: '<path d="M7 15a7 7 0 0 1 10-8zM41 15a7 7 0 0 0-10-8z" fill="#e8352d"/><path d="M13 39l-3 4M35 39l3 4"/><circle cx="24" cy="26" r="15" fill="#e8352d"/><circle cx="24" cy="26" r="11" fill="#fff6e5"/><path d="M24 19v7l5 3"/>',
+  bus: '<rect x="4" y="12" width="40" height="24" rx="5" fill="#f7c614"/><g fill="#9fd4f5" stroke-width="1.6"><rect x="8" y="16" width="7" height="7" rx="1.2"/><rect x="17" y="16" width="7" height="7" rx="1.2"/><rect x="26" y="16" width="7" height="7" rx="1.2"/><rect x="35" y="16" width="5" height="7" rx="1.2"/></g><path d="M5 28h38" stroke="#2f7fd8" stroke-width="2"/><circle cx="14" cy="36" r="4.5" fill="#6b6b75"/><circle cx="34" cy="36" r="4.5" fill="#6b6b75"/>',
+  car: '<path d="M4 33v-7l5-2 6-9h16l7 9 6 2v7z" fill="#3b8fe0"/><path d="M17 17.5h6v6.5h-11zM26 17.5h4l5 6.5h-9z" fill="#bfe3f5" stroke-width="1.6"/><circle cx="14" cy="34" r="5" fill="#6b6b75"/><circle cx="34" cy="34" r="5" fill="#6b6b75"/>',
+  house: '<path d="M4 40c0-4 4-6 7-4 2-3 6-2 6 2v2zM44 40c0-4-4-6-7-4-2-3-6-2-6 2v2z" fill="#3fa34d"/><path d="M11 22v18h26V22" fill="#fff3d6"/><rect x="31" y="8" width="5" height="9" fill="#a5522e"/><path d="M5 25 24 8l19 17" stroke="#e8352d" stroke-width="5"/><path d="M5 25 24 8l19 17" stroke-width="1.4"/><rect x="20" y="29" width="7" height="11" fill="#9a6a45"/><rect x="29.5" y="25" width="5" height="5" fill="#9fd4f5" stroke-width="1.5"/>',
+  homeheart: '<path d="M10 22v19h28V22" fill="#fff3d6"/><path d="M4 25 24 8l20 17" stroke="#e8352d" stroke-width="5"/><path d="M4 25 24 8l20 17" stroke-width="1.4"/><path d="M24 36c-6-4-8-7-6.5-10 1.5-2.5 5-2.5 6.5.5 1.5-3 5-3 6.5-.5 1.5 3-.5 6-6.5 10z" fill="#e8352d"/>',
+  family: '<circle cx="12" cy="13" r="5" fill="#3b8fe0"/><path d="M5 42V26a7 7 0 0 1 14 0v16z" fill="#3b8fe0"/><circle cx="36" cy="13" r="5" fill="#f7c614"/><path d="M29 42V26a7 7 0 0 1 14 0v16z" fill="#f7c614"/><circle cx="24" cy="25" r="3.8" fill="#f59ac0"/><path d="M19 42v-8a5 5 0 0 1 10 0v8z" fill="#f59ac0"/><path d="M24 15c-3-2.5-6-1.5-6 1 0 2.4 3.4 4 6 6 2.6-2 6-3.6 6-6 0-2.5-3-3.5-6-1z" fill="#e8352d" stroke-width="1.6"/>',
+  plane: '<path d="M26 18 9 13l-4 4 15 8M30 22l5 17-4 4-9-15" fill="#9fd4f5"/><path d="M41 7c2.5 2.5 0 7-3 10L16 39l-7 1.5L10.5 34 33 11c3-3 7.5-5.5 8-4z" fill="#fff"/><path d="M13 34l-5-1-2 2 5 3M14 35l1 5-2 2-3-5" fill="#9fd4f5" stroke-width="1.6"/>',
+  suitcase: '<path d="M18 14V8h12v6" stroke-width="2.6"/><rect x="9" y="14" width="30" height="28" rx="4" fill="#f5a21b"/><path d="M17 18v20M31 18v20" stroke-width="1.8"/><rect x="28" y="26" width="7" height="9" rx="1.2" transform="rotate(-18 31.5 30.5)" fill="#9fd4f5" stroke-width="1.6"/><path d="M14 42v3M34 42v3" stroke-width="3"/>',
+  umbrella: '<path d="M7 44c6-5 28-5 34 0z" fill="#f5c84a"/><path d="M24 12v31"/><path d="M5 25a19 15 0 0 1 38 0z" fill="#fff"/><path d="M5 25a19 15 0 0 1 10-12c-2 4-3 8-3 12zM24 10c4 3 6 9 6 15H18c0-6 2-12 6-15zM43 25a19 15 0 0 0-10-12c2 4 3 8 3 12z" fill="#e8352d"/>',
+  palm: '<path d="M5 44c5-6 33-6 38 0z" fill="#f5c84a"/><path d="M22 41c0-10 1-18 4-26" stroke="#8a5a3c" stroke-width="4.4"/><path d="M22 41c0-10 1-18 4-26" stroke="#b07a4e" stroke-width="2.2"/><path d="M26 15c-6-6-14-6-19-1 7 0 12 1 19 1zM26 15c4-7 12-9 17-5-6 1-11 2-17 5zM26 15c-2-6-8-10-14-8 6 2 10 5 14 8zM26 15c6-3 14-1 16 5-6-3-11-4-16-5z" fill="#2e9c46"/>',
+  mountains: '<path d="M3 41 17 15l8 13 6-9 14 22z" fill="#3e8ed0"/><path d="M13 22l4-7 4 6.5-2 1.5-2-2-2 2zM28 23.5l3-4.5 3.5 5-1.6 1-1.6-1.4-1.6 1.4z" fill="#fff" stroke-width="1.5"/><path d="M3 41c8-4 14-3 20-1s14 2 22 1v3H3z" fill="#4caf50"/>',
+  suncloud: '<path d="M19 4v4M8 9l3 3M30 9l-3 3M4 20h4" stroke="#f5b818" stroke-width="2.6"/><circle cx="19" cy="20" r="8" fill="#f7c614"/><path d="M14 40a7 7 0 0 1 1-14 9 9 0 0 1 17-2 7.5 7.5 0 0 1 3 16z" fill="#fff"/>',
+  storm: '<path d="M12 30a8 8 0 0 1 1-16 11 11 0 0 1 21-2 8.5 8.5 0 0 1 2 18z" fill="#9aa1ad"/><path d="M24 26l-6 10h6l-3 9 9-12h-6l3-7z" fill="#f7c614" stroke-width="1.8"/>',
+  paw: '<ellipse cx="24" cy="31" rx="9" ry="8" fill="#9a5b34"/><ellipse cx="13" cy="21.5" rx="3.8" ry="4.6" fill="#9a5b34"/><ellipse cx="19.5" cy="13.5" rx="3.8" ry="4.6" fill="#9a5b34"/><ellipse cx="28.5" cy="13.5" rx="3.8" ry="4.6" fill="#9a5b34"/><ellipse cx="35" cy="21.5" rx="3.8" ry="4.6" fill="#9a5b34"/>',
+  tree: '<path d="M24 9 14 21h6l-9 11h8l-8 8h26l-8-8h8l-9-11h6z" fill="#2e9c46"/><rect x="21" y="40" width="6" height="5" fill="#8a5a3c"/><g stroke-width="1.2"><circle cx="20" cy="27" r="1.9" fill="#e8352d"/><circle cx="29" cy="34" r="1.9" fill="#e8352d"/><circle cx="26" cy="20" r="1.7" fill="#e8352d"/><circle cx="18" cy="35.5" r="1.7" fill="#e8352d"/></g><path d="M24 2l1.8 3.7 4 .6-2.9 2.8.7 4L24 11.2l-3.6 1.9.7-4-2.9-2.8 4-.6z" fill="#f7c614" stroke-width="1.4"/>',
+  snow: '<g stroke="#2f7fd8" stroke-width="3"><path d="M24 5v38M7.5 14.5l33 19M7.5 33.5l33-19"/><path d="M19 9l5 4.5 5-4.5M19 39l5-4.5 5 4.5M9.5 21.5l6-1.5-1.8-6M38.5 26.5l-6 1.5 1.8 6M13.7 34l1.8-6-6-1.5M34.3 14l-1.8 6 6 1.5" stroke-width="2.4"/></g>',
+  cake: '<path d="M5 41c0 2 38 2 38 0" stroke-width="2.4"/><rect x="9" y="23" width="30" height="17" rx="3" fill="#fff3d6"/><path d="M9 26c0-2 1-3 3-3h24c2 0 3 1 3 3v3c-3 2-5-1-7 0s-4 3-7 1-4-1-6 0-4 2-6 0c-2 1-3 0-4-1z" fill="#f47bb2"/><path d="M16 23v-7M24 23v-7M32 23v-7" stroke="#3b8fe0" stroke-width="3"/><path d="M16 13c-2-1.7-1.3-4.3 0-6 1.3 1.7 2 4.3 0 6zM24 13c-2-1.7-1.3-4.3 0-6 1.3 1.7 2 4.3 0 6zM32 13c-2-1.7-1.3-4.3 0-6 1.3 1.7 2 4.3 0 6z" fill="#f5a21b" stroke-width="1.4"/>',
+  checklist: '<rect x="8" y="8" width="32" height="37" rx="4" fill="#3b8fe0"/><rect x="12" y="13" width="24" height="28" rx="1.5" fill="#fff"/><rect x="18" y="5" width="12" height="6" rx="2" fill="#9fd4f5"/><path d="M15 20l2 2 3.5-4M15 28l2 2 3.5-4M15 36l2 2 3.5-4" stroke="#2fa35a" stroke-width="2.4"/><path d="M24 20.5h8M24 28.5h8M24 36.5h8" stroke="#9aa1ad" stroke-width="2"/>',
+  doccheck: '<path d="M9 5h24l6 6v31H9z" fill="#fff"/><path d="M14 13h14M14 19h18M14 25h18M14 31h10" stroke="#6aa6e0" stroke-width="2.2"/><circle cx="35" cy="37" r="9" fill="#2fa35a"/><path d="M30.5 37l3 3 6-6.5" stroke="#fff" stroke-width="2.8"/>',
+  check: '<rect x="8" y="10" width="30" height="30" rx="4" fill="#fff"/><path d="M14 25l7 7L41 9" stroke="#2fa35a" stroke-width="4"/>',
+  star: '<path d="M24 5l5.6 11.5 12.6 1.7-9.2 8.8 2.3 12.5L24 33.4l-11.3 6.1L15 27l-9.2-8.8 12.6-1.7z" fill="#f7c614"/>' + HL('M20 16l2-4'),
+  phone: '<rect x="14" y="5" width="20" height="38" rx="4.5" fill="#3b8fe0"/><rect x="17.5" y="10" width="13" height="23" rx="1.2" fill="#bfe3f5" stroke-width="1.6"/><path d="M21.5 38h5"/>',
+  bag: '<path d="M18 20v-6a6 6 0 0 1 12 0v6"/><path d="M9 17h30l-2 25H11z" fill="#f5a21b"/>' + HL('M14 22l-1 14'),
+  pencil: '<path d="M9 39l3-10 21-21 7 7-21 21z" fill="#f7c614"/><path d="M9 39l10-3-7-7z" fill="#f6dcb3"/><path d="M29 12l7 7M33 8l7 7" stroke-width="1.8"/><path d="M33 8l3-3 7 7-3 3z" fill="#f47bb2"/><path d="M9 39l3-1-2-2z" fill="#22202a"/>',
+  tooth: '<path d="M14 9c4-3 7 0 10 0s6-3 10 0c4 4 2 12 0 16-1 3-2 15-5 15-2 0-2-8-5-8s-3 8-5 8c-3 0-4-12-5-15-2-4-4-12 0-16z" fill="#fff"/>' + HL('M17 13c-1 1-1.5 3-1 5'),
+  bell: '<path d="M12 34c3-3 4-7 4-13a8 8 0 0 1 16 0c0 6 1 10 4 13z" fill="#f7c614"/><path d="M21 38a3 3 0 0 0 6 0M24 13V9"/><path d="M37 12l3-3M39 19h4M11 12l-3-3" stroke="#f5b818" stroke-width="2.6"/>',
+  sun: '<path d="M24 4v6M24 38v6M4 24h6M38 24h6M10 10l4 4M34 34l4 4M10 38l4-4M34 14l4-4" stroke="#f5b818" stroke-width="2.8"/><circle cx="24" cy="24" r="9.5" fill="#f7c614"/>',
+};
+const iconSVG = (k, cls) => `<svg class="${cls}" viewBox="0 0 48 48" aria-hidden="true" fill="none" stroke="#22202a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">${ICONS[k] || ICONS.star}</svg>`;
+// what a note is about → which doodle (first match wins)
+const DOODLE_WORDS = [
+  [/sweater|jumper|flannel/, 'sweater'], [/candy|cane/, 'cane'], [/gift|present|exchange|wrapped|santa/, 'gift'],
+  [/birthday|cake|party/, 'cake'], [/\bdogs?\b|vet|\bpets?\b|\bcats?\b|puppy/, 'paw'], [/dentist|tooth|teeth|ortho/, 'tooth'],
+  [/lunch|apple|snack|food/, 'apple'], [/arboretum|park|hike|forest|camp/, 'trees'], [/graduat/, 'gradcap'],
+  [/homework|packet|math|study|test|exam/, 'books'], [/\bbooks?\b|read|library/, 'book'],
+  [/chaperone|sign.?up|checklist|\blist\b/, 'checklist'], [/\bform\b|submit|permission|application/, 'doccheck'],
+  [/early|release|wake|alarm|deadline|by \d/, 'alarm'], [/\bbus\b|drop.?off|pick.?up|carpool|resumes|back to school/, 'bus'],
+  [/flight|\bfly|airport|plane/, 'plane'], [/pack|suitcase|travel|luggage/, 'suitcase'], [/beach|pool|swim/, 'umbrella'],
+  [/vacation|resort|island|cruise/, 'palm'], [/\bski|mountain|snowboard/, 'mountains'], [/storm|rain/, 'storm'], [/weather|sunny/, 'suncloud'],
+  [/\bcar\b|drive|garage|oil change|tyre|tire/, 'car'], [/bike|cycl|ride/, 'bike'],
+  [/parents|family|kids|night out|\bmom\b|\bdad\b/, 'family'],
+  [/snow|winter/, 'snow'], [/christmas|xmas|holiday/, 'tree'], [/\bcall|phone/, 'phone'], [/buy|shop|grocer|store|black friday|sale/, 'bag'],
+  [/disney|movie|concert|show/, 'star'], [/school|class|teacher|grade/, 'pencil'], [/love|wife|husband|heart/, 'heart'],
+  [/summer|sun\b/, 'sun'], [/appoint|doctor|install|meeting/, 'calendar'], [/home|house|sofa|clean|laundry/, 'house'],
+  [/remind|remember/, 'bell'], [/hibiscus/, 'hibiscus'], [/flower|garden|plant/, 'flower'],
+];
+const GROUP_ICONS = [
+  [/birthday/, 'cake'], [/home|house|chore/, 'homeheart'], [/remind/, 'bell'], [/holiday|christmas/, 'tree'],
+  [/vacation|travel|trip/, 'plane'], [/appoint|doctor|dentist/, 'calendar'], [/school|class/, 'gradcap'],
+  [/grocer|shop/, 'bag'], [/weekend/, 'suncloud'], [/family|kids/, 'family'], [/garden/, 'flower'],
+];
+const matchIcon = (table, s) => { s = s.toLowerCase(); for (const [re, k] of table) if (re.test(s)) return k; return null; };
+const groupIcon = (title) => matchIcon(GROUP_ICONS, title) || matchIcon(DOODLE_WORDS, title) || 'star';
+function noteDoodle(n) {
+  const tasks = n.items.filter(i => i.task);
+  if (tasks.length && tasks.every(t => t.done)) return 'check';
+  const gi = groupIcon(n.group);
+  const avoid = n.parts === 1 ? gi : null;            // single notes already show the group icon by the title
+  for (const it of [...n.items.filter(i => !i.done), ...n.items.filter(i => i.done)]) {
+    const k = matchIcon(DOODLE_WORDS, it.text); if (k && k !== avoid) return k;
+  }
+  if (!avoid) return gi;
+  const spare = ['heart', 'star', 'flower', 'flowerBlue', 'flowerYellow', 'hibiscus', 'leaves'].filter(k => k !== avoid);
+  return spare[hash(String(n.id || n.group)) % spare.length];
+}
+
+
+// ---------- markdown → groups (identical rules to the main board) ----------
+const clean = (s) => s
+  .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+  .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+  .replace(/(\*\*|__)(.+?)\1/g, '$2')
+  .replace(/(^|\s)\*(\S(?:.*?\S)?)\*(?=\s|$)/g, '$1$2')
+  .replace(/`([^`]*)`/g, '$1')
+  .replace(/<[^>]+>/g, '')
+  .trim();
+// ---------- markdown -> groups -> notes ----------
+function parse(md) {
+  const lines = md.replace(/\r/g, '').replace(/<!--[\s\S]*?-->/g, '').split('\n');
+  const hasSubheads = lines.some(l => /^#{2,6}\s/.test(l));
+  const groups = []; let cur = null;
+  const open = (title) => { cur = { title: title || 'To do', items: [] }; groups.push(cur); };
+  for (const raw of lines) {
+    const l = raw.trimEnd(); let m;
+    if (!l.trim()) continue;
+    if ((m = l.match(/^(#{1,6})\s+(.*)$/))) {
+      if (m[1].length === 1 && hasSubheads) continue;   // top-level "# Board title"
+      open(clean(m[2])); continue;
+    }
+    if ((m = l.match(/^\s*(?:[-*+]|\d+[.)])\s+(?:\[([ xX])\]\s*)?(.*)$/))) {
+      if (!cur) open('To do');
+      let text = m[2].trim();
+      let done = m[1] ? m[1].toLowerCase() === 'x' : false;
+      const whole = text.match(/^~~(.*)~~$/); if (whole) { done = true; text = whole[1]; }
+      text = clean(text);
+      if (text) cur.items.push({ text, done, task: true });
+      continue;
+    }
+    const t = l.trim();
+    if (cur && !/^(-{3,}|\*{3,}|_{3,}|>|```|\|)/.test(t)) {
+      const text = clean(t);
+      if (text) cur.items.push({ text, done: false, task: false });
+    }
+  }
+  return groups.filter(g => g.items.length);
+}
+
+
+
+// ---------- WebGL scene ----------
+const canvas = document.getElementById('gl');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'low-power' });
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+const DPR = TV ? 1 : Math.min(2, devicePixelRatio || 1);
+renderer.setPixelRatio(DPR);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(30, 1, 1, 20000);
+let W = innerWidth, H = innerHeight;
+const world = (x, y) => [x - W / 2, H / 2 - y];      // screen px (top-left origin) → world units
+
+function sizeScene() {
+  W = innerWidth; H = innerHeight;
+  renderer.setSize(W, H, false);
+  camera.aspect = W / H;
+  camera.position.set(0, 0, (H / 2) / Math.tan(15 * DEG));
+  camera.lookAt(0, 0, 0);
+  camera.updateProjectionMatrix();
+}
+
+const texFrom = (cv) => { const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; };
+const mkCanvas = (w, h) => { const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(w)); c.height = Math.max(1, Math.round(h)); return c; };
+
+// paper grain, made once and reused by every note
+const grain = (() => {
+  const c = mkCanvas(128, 128), g = c.getContext('2d'), img = g.createImageData(128, 128), R = rng(99);
+  for (let i = 0; i < img.data.length; i += 4) { const v = 110 + R() * 60; img.data[i] = v; img.data[i + 1] = v * .95; img.data[i + 2] = v * .85; img.data[i + 3] = 14 + R() * 18; }
+  g.putImageData(img, 0, 0); return c;
+})();
+
+// a soft shadow, blurred once and shared by every note
+const shadowTex = (() => {
+  const c = mkCanvas(128, 128), g = c.getContext('2d');
+  g.filter = 'blur(9px)'; g.fillStyle = 'rgba(40,30,12,1)';
+  g.beginPath(); g.roundRect(22, 26, 84, 86, [3, 3, 30, 30]); g.fill();
+  const t = new THREE.CanvasTexture(c); return t;
+})();
+
+// glossy pushpin head, one texture per colour
+const pinTex = {};
+function pinTexture(color) {
+  if (pinTex[color]) return pinTex[color];
+  const c = mkCanvas(96, 96), g = c.getContext('2d');
+  g.filter = 'blur(3px)'; g.fillStyle = 'rgba(40,28,10,.35)'; g.beginPath(); g.ellipse(56, 58, 26, 20, .5, 0, Math.PI * 2); g.fill(); g.filter = 'none';
+  const gr = g.createRadialGradient(40, 36, 2, 46, 46, 30);
+  gr.addColorStop(0, '#ffffff'); gr.addColorStop(.12, color); gr.addColorStop(.85, color); gr.addColorStop(1, 'rgba(0,0,0,.55)');
+  g.fillStyle = gr; g.beginPath(); g.arc(46, 46, 26, 0, Math.PI * 2); g.fill();
+  const t = texFrom(c); pinTex[color] = t; return t;
+}
+
+// SVG icons become images for drawing onto the paper textures
+const iconImgs = {};
+let iconRedrawTimer = 0;
+function iconImage(k) {
+  let img = iconImgs[k];
+  if (!img) {
+    img = iconImgs[k] = new Image();
+    const svg = iconSVG(k, '').replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" ');
+    img.onload = () => { img.ready = true; clearTimeout(iconRedrawTimer); iconRedrawTimer = setTimeout(() => { for (const st of live.values()) paint(st); drawBanner(); kick(); }, 30); };
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  }
+  return img.ready ? img : null;
+}
+
+// ---------- the wall (drawn once per resize) ----------
+let wall = null;
+function buildWall() {
+  if (wall) { scene.remove(wall); wall.material.map.dispose(); wall.geometry.dispose(); wall.material.dispose(); }
+  const c = mkCanvas(W, H), g = c.getContext('2d');
+  let gr = g.createRadialGradient(W * .5, H * .25, 0, W * .5, H * .25, Math.max(W, H) * .9);
+  gr.addColorStop(0, '#f8f1e4'); gr.addColorStop(.55, '#efe6d6'); gr.addColorStop(1, '#e0d3bd');
+  g.fillStyle = gr; g.fillRect(0, 0, W, H);
+  // window light falling across the wall, with the window bars
+  g.filter = `blur(${Math.round(Math.min(W, H) * .035)}px)`;
+  g.fillStyle = 'rgba(255,240,205,.55)';
+  g.beginPath(); g.moveTo(W * .04, -H * .05); g.lineTo(W * .58, -H * .08); g.lineTo(W * .8, H * .88); g.lineTo(W * .2, H * 1.02); g.closePath(); g.fill();
+  g.filter = `blur(${Math.round(Math.min(W, H) * .012)}px)`;
+  g.strokeStyle = 'rgba(150,130,100,.12)'; g.lineWidth = Math.max(10, W * .014);
+  g.beginPath(); g.moveTo(W * .31, -H * .065); g.lineTo(W * .5, H * .95); g.stroke();
+  g.beginPath(); g.moveTo(W * .1, H * .4); g.lineTo(W * .68, H * .36); g.stroke();
+  g.filter = 'none';
+  g.globalAlpha = .6; g.fillStyle = g.createPattern(grain, 'repeat'); g.fillRect(0, 0, W, H); g.globalAlpha = 1;
+  const mat = new THREE.MeshBasicMaterial({ map: texFrom(c) });
+  wall = new THREE.Mesh(new THREE.PlaneGeometry(W * 1.15, H * 1.15), mat);   // a little larger, for the parallax
+  wall.position.z = -60;
+  scene.add(wall);
+}
+
+// ---------- a bendable sheet (notes and the banner) ----------
+// A plane hinged along its top edge; rows further down bend more, like real paper curling off a pin.
+function makeSheet(cols, rows) {
+  const geo = new THREE.PlaneGeometry(1, 1, cols, rows).translate(0, -0.5, 0);
+  geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(geo.attributes.position.count * 3).fill(1), 3));
+  return { geo, base: geo.attributes.position.array.slice(), rows, cols };
+}
+// bendDeg: angle at the bottom edge; corner: extra lift of one bottom corner (-1 left … 1 right)
+function bendSheet(sh, bendDeg, corner, glue = 0.2) {
+  const { geo, base, rows } = sh;
+  const pos = geo.attributes.position.array, col = geo.attributes.color.array;
+  const ys = new Float32Array(rows + 1), zs = new Float32Array(rows + 1), th = new Float32Array(rows + 1);
+  const ds = 1 / rows;
+  for (let r = 1; r <= rows; r++) {
+    const t = r / rows, w = t <= glue ? 0 : Math.pow((t - glue) / (1 - glue), 1.5);
+    th[r] = bendDeg * DEG * w;
+    ys[r] = ys[r - 1] - ds * Math.cos(th[r]);
+    zs[r] = zs[r - 1] + ds * Math.sin(th[r]);
+  }
+  for (let i = 0; i < pos.length; i += 3) {
+    const x = base[i], r = Math.round(-base[i + 1] * rows), t = r / rows;
+    const lift = corner * Math.pow(clamp(x * Math.sign(corner) + .5, 0, 1), 2) * Math.pow(Math.max(0, t - glue), 2) * 0.09;
+    pos[i] = x; pos[i + 1] = ys[r]; pos[i + 2] = zs[r] + Math.abs(lift);
+    // paper turned away from the window light reads darker
+    const shade = 1 - 0.32 * Math.sin(th[r]) - Math.abs(lift) * 1.2;
+    col[i] = col[i + 1] = col[i + 2] = clamp(shade, .55, 1);
+  }
+  geo.attributes.position.needsUpdate = true; geo.attributes.color.needsUpdate = true;
+  geo.computeBoundingSphere();
+}
+
+// ---------- notes ----------
+const writingSize = (S, font) => S * 0.077 * font.s;
+const mctx = mkCanvas(8, 8).getContext('2d');
+const fontStr = (font, px) => `${font.w} ${px}px ${font.f}`;
+// Word-wrap; a line may run a little into the margin rather than leave one short word on its own.
+function wrap(ctx, text, maxW, slack = 0) {
+  const words = text.split(/\s+/), lines = []; let cur = '';
+  for (const w of words) { const t = cur ? cur + ' ' + w : w; if (!cur || ctx.measureText(t).width <= maxW) cur = t; else { lines.push(cur); cur = w; } }
+  if (cur) lines.push(cur);
+  // pull a lone short last word (like "4" or "17") back up if it fits within the slack
+  if (lines.length > 1 && lines[lines.length - 1].length <= 6) {
+    const joined = lines[lines.length - 2] + ' ' + lines[lines.length - 1];
+    if (ctx.measureText(joined).width <= maxW + slack) { lines.splice(-2, 2, joined); }
+  }
+  return lines;
+}
+// Where everything goes on a note of size S (in note px). Also tells whether it fits.
+function layoutNote(n, S, font, parts = n.parts) {
+  const fs = writingSize(S, font), padL = S * .10, padR = S * .08, padT = S * .095, padB = S * .12;
+  const ops = []; let y = padT;
+  const ts = fs * 1.34;
+  mctx.font = fontStr(font, ts);
+  const tw = mctx.measureText(n.group).width;
+  ops.push({ k: 'title', x: padL, y: y + ts * .85, size: ts, text: n.group, w: tw });
+  if (parts > 1) ops.push({ k: 'small', x: padL + tw + ts * .3, y: y + ts * .85, size: ts * .58, text: `(${n.part + 1} of ${parts})` });
+  else ops.push({ k: 'ticon', x: padL + tw + ts * .3, y: y + ts * .85 - ts * 1.25, size: ts * 1.45, icon: groupIcon(n.group) });
+  y += ts * 1.05 + ts * .16 + ts * .38;
+  for (const it of n.items) {
+    const size = it.task ? fs : fs * .94;
+    mctx.font = fontStr(font, size);
+    const lines = wrap(mctx, it.text, S - padL - padR - fs * .95, padR * .7);
+    const lineH = size * font.lh;
+    ops.push({ k: 'item', it, x: padL, y, size, lines, lineH });
+    y += lines.length * lineH + fs * .2;
+  }
+  return { fits: y - fs * .2 <= S - padB + 1, ops, fs };
+}
+const fitsOnNote = (n, font, S, parts = 9) => layoutNote({ ...n, parts }, S, font, parts).fits;
+
+let boardGids = new Set();
+function toNotes(groups, S) {
+  const notes = [], seen = {};
+  boardGids = new Set();
+  for (const g of groups) {
+    const gkey = g.title.toLowerCase();
+    seen[gkey] = (seen[gkey] || 0) + 1;
+    const gid = seen[gkey] > 1 ? `${gkey}~${seen[gkey]}` : gkey;
+    const { font } = look({ gid });
+    boardGids.add(gid);
+    const base = { gid, group: g.title };
+    let chunks;
+    if (fitsOnNote({ ...base, part: 0, items: g.items }, font, S, 1)) chunks = [g.items];
+    else {
+      const greedy = []; let c = [];
+      for (const it of g.items) {
+        const trial = [...c, it];
+        if (c.length && !fitsOnNote({ ...base, part: greedy.length, items: trial }, font, S)) { greedy.push(c); c = [it]; } else c = trial;
+      }
+      if (c.length) greedy.push(c);
+      chunks = greedy;
+      const k = greedy.length, per = Math.ceil(g.items.length / k), even = [];
+      for (let i = 0; i < g.items.length; i += per) even.push(g.items.slice(i, i + per));
+      if (even.length === k && even.every((items, i) => fitsOnNote({ ...base, part: i, items }, font, S))) chunks = even;
+    }
+    chunks.forEach((items, i) => {
+      const tasks = items.filter(x => x.task);
+      notes.push({ id: `${gid}::${i}`, gid, group: g.title, part: i, parts: chunks.length, items,
+        allDone: tasks.length > 0 && tasks.every(t => t.done), sig: JSON.stringify([chunks.length, items]) });
+    });
+  }
+  return notes;
+}
+
+let looks = store.get('postit3d-looks-v1') || {};
+const live = new Map();
+function pickLeastUsed(count, used) {
+  let best = [], min = Infinity;
+  for (let i = 0; i < count; i++) { const u = used[i] || 0; if (u < min) { min = u; best = [i]; } else if (u === min) best.push(i); }
+  return best[Math.floor(Math.random() * best.length)];
+}
+function look(n) {
+  let L = looks[n.gid];
+  if (!L || L.p >= PAPERS.length || L.f >= FONTS.length || L.i >= INKS.length) {
+    const active = new Set([...live.values()].map(st => st.gid).concat([...boardGids]));
+    const up = {}, uf = {}, ui = {};
+    for (const g of active) { const o = looks[g]; if (o) { up[o.p] = (up[o.p] || 0) + 1; uf[o.f] = (uf[o.f] || 0) + 1; ui[o.i] = (ui[o.i] || 0) + 1; } }
+    L = looks[n.gid] = { p: pickLeastUsed(PAPERS.length, up), f: pickLeastUsed(FONTS.length, uf), i: pickLeastUsed(INKS.length, ui) };
+    store.set('postit3d-looks-v1', looks);
+  }
+  return { paper: PAPERS[L.p], ink: INKS[L.i], font: FONTS[L.f] };
+}
+
+// ---------- layout: tidy rows (same rules as the main board) ----------
+let S = 230, bannerBottom = 0;
+const maxNoteSize = () => Math.round(Math.max(Math.min(225, W * 0.8), Math.min(375, Math.min(W, H) * 0.4)));
+const minNoteSize = () => Math.min(maxNoteSize(), 190);
+const margin = () => Math.max(14, Math.min(40, W * 0.03));
+const topY = () => Math.max(margin(), bannerBottom + 14);
+const region = (S) => ({ x0: margin(), y0: topY(), x1: W - margin() - S, y1: H - margin() - S * 1.08 });
+const clustersOf = (notes) => { const m = new Map(); for (const n of notes) { if (!m.has(n.gid)) m.set(n.gid, { gid: n.gid, ids: [] }); m.get(n.gid).ids.push(n.id); } return [...m.values()]; };
+function gridPack(clusters, S, force = false) {
+  const r = region(S), Wd = r.x1 - r.x0 + S, Hd = r.y1 - r.y0 + S;
+  const gx = S * 0.06, gy = S * 0.15, gg = S * 0.16;
+  const maxCols = Math.max(1, Math.floor((Wd + gx) / (S + gx)));
+  const items = [];
+  for (const c of clusters) for (let i = 0; i < c.ids.length; i += maxCols) {
+    const ids = c.ids.slice(i, i + maxCols);
+    items.push({ ids, first: i === 0, w: ids.length * S + (ids.length - 1) * gx });
+  }
+  const rows = []; let lastRow = -1;
+  for (const it of items) {
+    let row = -1;
+    for (let k = it.first ? 0 : lastRow + 1; k < rows.length && row < 0; k++) if (rows[k].w + gg + it.w <= Wd) row = k;
+    if (row < 0) { rows.push({ items: [], w: -gg }); row = rows.length - 1; }
+    rows[row].items.push(it); rows[row].w += gg + it.w; lastRow = row;
+  }
+  const usedH = rows.length * S + (rows.length - 1) * gy;
+  if (usedH > Hd + .5 && !force) return null;
+  const extra = Math.max(0, Math.min((Hd - usedH) / (rows.length + 1), S * 0.1));
+  const out = {}; let y = r.y0 + extra * .6;
+  for (const row of rows) {
+    let x = r.x0 + (Wd - row.w) / 2;
+    for (const it of row.items) {
+      it.ids.forEach((id, k) => { const J = rng(hash(id) + 99); out[id] = { x: x + k * (S + gx) + (J() - .5) * S * .02, y: y + (J() - .5) * S * .035 }; });
+      x += it.w + gg;
+    }
+    y += S + gy + extra;
+  }
+  return out;
+}
+const DONE_KEY = 'postit3d-done-v1';
+let doneAt = store.get(DONE_KEY) || {};
+const expired = (n, now) => n.allDone && doneAt[n.id] && doneAt[n.id].sig === n.sig && doneAt[n.id].at + CONFIG.doneHours * 3600e3 <= now;
+function chooseSize(groups) {
+  const hi = maxNoteSize(), lo = minNoteSize(), now = Date.now();
+  const shownAt = (s) => toNotes(groups, s).filter(n => !expired(n, now));
+  const Wd = W - 2 * margin(), Hd = H - margin() - topY();
+  let s = Math.round(clamp(Math.sqrt(Wd * Hd * 0.9 / Math.max(1, shownAt(hi).length)), lo, hi));
+  for (let pass = 0; pass < 20; pass++) {
+    if (s <= lo || gridPack(clustersOf(shownAt(s)), s)) break;
+    s = Math.max(lo, Math.round(s * 0.94));
+  }
+  return s;
+}
+
+// ---------- painting a note's face (only when its content changes) ----------
+function paint(st, strikeProgress = null) {
+  const n = st.note, { paper, ink, font } = st.look;
+  const T = Math.min(1024, Math.ceil(S * DPR * 1.25));
+  const c = st.canvas;
+  if (c.width !== T) {
+    c.width = c.height = T;
+    if (st.tex) st.tex.dispose();
+    st.tex = texFrom(c);
+    if (st.paperMesh) { st.paperMesh.material.map = st.tex; st.paperMesh.material.needsUpdate = true; }
+  }
+  const g = c.getContext('2d');
+  g.setTransform(T / S, 0, 0, T / S, 0, 0);
+  g.fillStyle = paper; g.fillRect(0, 0, S, S);
+  g.fillStyle = g.createPattern(grain, 'repeat'); g.fillRect(0, 0, S, S);
+  let gr = g.createLinearGradient(0, 0, 0, S);
+  gr.addColorStop(0, 'rgba(0,0,0,.035)'); gr.addColorStop(.2, 'rgba(0,0,0,0)'); gr.addColorStop(.42, 'rgba(255,255,255,.14)'); gr.addColorStop(.66, 'rgba(255,255,255,0)'); gr.addColorStop(1, 'rgba(0,0,0,.05)');
+  g.fillStyle = gr; g.fillRect(0, 0, S, S);
+  const L = layoutNote(n, S, font);
+  let todayCount = 0, overdueCount = 0;
+  const highlighter = /^#(fbe88f|fcd4a9)$/i.test(paper) ? '#ff94c2' : '#ffe53b';   // pink on yellow paper, yellow elsewhere
+  g.textBaseline = 'alphabetic';
+  g.fillStyle = ink; g.strokeStyle = ink; g.globalAlpha = .93;
+  for (const op of L.ops) {
+    if (op.k === 'title') {
+      g.font = fontStr(font, op.size); g.fillText(op.text, op.x, op.y);
+      g.save(); g.globalAlpha = .88; g.strokeStyle = ACCENT; g.lineWidth = op.size * .13; g.lineCap = 'round';
+      g.beginPath(); g.moveTo(op.x, op.y + op.size * .2); g.quadraticCurveTo(op.x + op.w * .45, op.y + op.size * .29, op.x + op.w, op.y + op.size * .15); g.stroke(); g.restore();
+    } else if (op.k === 'small') {
+      g.save(); g.globalAlpha = .7; g.font = fontStr(font, op.size); g.fillText(op.text, op.x, op.y); g.restore();
+    } else if (op.k === 'ticon') {
+      const img = iconImage(op.icon); if (img) { g.save(); g.globalAlpha = 1; g.drawImage(img, op.x, op.y, op.size, op.size); g.restore(); }
+    } else if (op.k === 'item') {
+      const key = `${n.gid}|${op.it.text}`, R = rng(hash(key));
+      const rot = (R() * 2 - 1) * 1.3 * DEG, dx = R() * 5 - 1.5;
+      g.save(); g.translate(op.x + dx, op.y + op.lineH * .5); g.rotate(rot); g.translate(0, -op.lineH * .5);
+      g.font = fontStr(font, op.size);
+      if (op.it.done) g.globalAlpha = .78;
+      const status = taskStatus(op.it);
+      if (status === 'past') g.globalAlpha = .45;
+      if (status === 'today') todayCount++; else if (status === 'overdue') overdueCount++;
+      if (status === 'today' || status === 'tomorrow') {         // a highlighter swipe behind the words
+        g.save(); g.globalCompositeOperation = 'multiply'; g.globalAlpha = status === 'today' ? .62 : .26; g.fillStyle = highlighter;
+        op.lines.forEach((line, li) => {
+          const ly = li * op.lineH + op.lineH * .8, w = g.measureText(line).width, J = rng(hash(key) + 7 + li);
+          const x0 = L.fs * .8, x1 = L.fs * .95 + w + op.size * .22, y0 = ly - op.size * .8, y1 = ly + op.size * .16;
+          g.beginPath(); g.moveTo(x0 + (J() - .5) * 4, y0 + 2); g.lineTo(x1, y0 + (J() - .5) * 4); g.lineTo(x1 + (J() - .5) * 5, y1); g.lineTo(x0, y1 + (J() - .5) * 4); g.closePath(); g.fill();
+        });
+        g.restore();
+      }
+      g.fillText('•', op.size * .12, op.lineH * .8);
+      if (status === 'overdue') { g.save(); g.fillStyle = ACCENT; g.globalAlpha = .95; g.font = fontStr(font, op.size * 1.1); g.fillText('!', -op.size * .34, op.lineH * .82); g.restore(); }
+      op.lines.forEach((line, li) => {
+        const ly = li * op.lineH + op.lineH * .8;
+        g.fillText(line, L.fs * .95, ly);
+        if (status === 'overdue') {                               // red wavy marker underline
+          const w = g.measureText(line).width, uy = ly + op.size * .17;
+          g.save(); g.strokeStyle = ACCENT; g.globalAlpha = .85; g.lineWidth = op.size * .075; g.lineCap = 'round'; g.beginPath();
+          for (let x = 0; x <= w; x += 2) { const yy = uy + Math.sin(x / (op.size * .17)) * op.size * .05; x ? g.lineTo(L.fs * .95 + x, yy) : g.moveTo(L.fs * .95, yy); }
+          g.stroke(); g.restore();
+        }
+        if (op.it.done) {
+          const p = strikeProgress && strikeProgress.has(key) ? strikeProgress.get(key) : 1;
+          const w = g.measureText(line).width * clamp(p * op.lines.length - li, 0, 1);
+          if (w > 0) {
+            const sy = ly - op.size * .28, S2 = rng(hash(key) + li);
+            g.save(); g.globalAlpha = .9; g.lineWidth = op.size * .1; g.lineCap = 'round';
+            g.beginPath(); g.moveTo(L.fs * .9, sy + (S2() - .5) * 2);
+            g.bezierCurveTo(L.fs * .9 + w * .3, sy - 2 + S2() * 3, L.fs * .9 + w * .6, sy + 1 - S2() * 3, L.fs * .9 + w, sy + (S2() - .5) * 2);
+            g.stroke(); g.restore();
+          }
+        }
+      });
+      g.restore();
+    }
+  }
+  // a rubber-stamp style tag when something on this note is due today (or overdue)
+  g.globalAlpha = 1;
+  if (todayCount || overdueCount) {
+    const label = todayCount ? 'TODAY' : 'OVERDUE', col = todayCount ? '#e0453d' : '#a8231b';
+    g.save(); g.translate(S * .79, S * .08); g.rotate(-7 * DEG); g.globalAlpha = .9;
+    g.font = `${S * .062}px ${font.f}`; const tw = g.measureText(label).width, bw2 = tw + S * .055, bh2 = S * .085;
+    g.strokeStyle = col; g.fillStyle = col; g.lineWidth = S * .008;
+    g.beginPath(); g.roundRect(-bw2 / 2, -bh2 / 2, bw2, bh2, S * .012); g.stroke();
+    g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(label, 0, S * .004);
+    g.restore(); g.textAlign = 'start'; g.textBaseline = 'alphabetic';
+  }
+  if (SEASON.holiday === 'christmas') {                       // a little snow settled along the top edge
+    const J = rng(hash(n.id) + 3);
+    g.save(); g.fillStyle = 'rgba(150,175,210,.35)'; g.beginPath(); g.moveTo(0, 0);
+    for (let x = 0; x <= S; x += S / 14) g.quadraticCurveTo(x - S / 28, S * (.05 + J() * .03), x, S * (.035 + J() * .02));
+    g.lineTo(S, 0); g.fill();
+    g.fillStyle = '#ffffff'; g.beginPath(); g.moveTo(0, 0);
+    for (let x = 0; x <= S; x += S / 14) g.quadraticCurveTo(x - S / 28, S * (.04 + J() * .025), x, S * (.022 + J() * .015));
+    g.lineTo(S, 0); g.fill(); g.restore();
+  }
+  // the doodle in the corner, with a few sparkle strokes
+  const img = iconImage(noteDoodle(n)), ds = S * .15;
+  if (img) g.drawImage(img, S * .95 - ds, S * .975 - ds, ds, ds);
+  g.strokeStyle = '#f5b818'; g.lineWidth = S * .009; g.lineCap = 'round';
+  const sx = S * .74, sy = S * .86, u = S * .012;
+  g.beginPath(); g.moveTo(sx, sy - 2.5 * u); g.lineTo(sx + 3 * u, sy - 3.6 * u); g.moveTo(sx - .3 * u, sy); g.lineTo(sx + 3.2 * u, sy); g.moveTo(sx, sy + 2.5 * u); g.lineTo(sx + 3 * u, sy + 3.6 * u); g.stroke();
+  st.tex.needsUpdate = true;
+}
+
+// ---------- note objects ----------
+const SEGS = 16;
+function createNote(n, delay) {
+  const lk = look(n);
+  const sheet = makeSheet(8, SEGS);
+  const cv = mkCanvas(8, 8), tex = null;
+  const paperMesh = new THREE.Mesh(sheet.geo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide }));
+  const shadow = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, opacity: .45, depthWrite: false }));
+  const pin = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: pinTexture(PINS[hash(n.id) % PINS.length]), transparent: true, depthWrite: false }));
+  const group = new THREE.Group();
+  group.add(shadow, paperMesh, pin);
+  scene.add(group);
+  const R = rng(hash(n.id) + 7);
+  const st = {
+    id: n.id, gid: n.gid, note: n, look: lk, sig: n.sig, group, paperMesh, shadow, pin, sheet, canvas: cv, tex,
+    tilt: (R() * 2 - 1) * 2.4, rest: 6 + R() * 10, corner: R() < .5 ? -1 : 1,
+    x: 0, y: 0, tx: 0, ty: 0, bend: -1, h: 0, hTarget: 0, events: [], born: performance.now() + delay, enter: reduceMotion ? 1 : 0,
+    ph1: R() * 6.28, ph2: R() * 6.28, wdur: 5500 + R() * 4000, layer: 0,
+  };
+  paint(st);
+  sizeNote(st);
+  live.set(n.id, st);
+  return st;
+}
+function sizeNote(st) {
+  st.paperMesh.scale.set(S, S, S);
+  st.shadow.scale.set(S * 1.5, S * 1.5, 1);
+  st.pin.scale.set(S * .13, S * .13, 1); st.pin.position.set(S * .012, -S * .02, S * .02 + 2);
+}
+function disposeNote(st) {
+  scene.remove(st.group);
+  st.sheet.geo.dispose(); st.tex.dispose();
+  st.paperMesh.material.dispose(); st.shadow.geometry.dispose(); st.shadow.material.dispose(); st.pin.geometry.dispose(); st.pin.material.dispose();
+}
+
+// per-frame motion for one note; returns true while it is still moving
+function stepNote(st, now) {
+  let moving = false;
+  if (st.enter < 1) {
+    st.enter = clamp((now - st.born) / 850, 0, 1); moving = true;
+  }
+  let g = 0;
+  st.events = st.events.filter(ev => {
+    const u = (now - ev.t0) / ev.dur;
+    if (u < 0) return true;
+    g += ev.fn(Math.min(1, u)); return u < 1 || ev.hold;
+  });
+  if (st.events.length) moving = true;
+  st.h += (st.hTarget - st.h) * .15; if (Math.abs(st.hTarget - st.h) > .05) moving = true;
+  let breeze = 0;
+  if (BREEZE && !reduceMotion) { const t = now / st.wdur * Math.PI * 2; breeze = (0.6 + 0.4 * Math.sin(t + st.ph1) + 0.2 * Math.sin(t * 2.3 + st.ph2)) * 6; moving = true; }
+  // position (eases when the layout changes)
+  const dx = st.tx - st.x, dy = st.ty - st.y;
+  if (Math.abs(dx) + Math.abs(dy) > .3) { st.x += dx * .14; st.y += dy * .14; moving = true; } else { st.x = st.tx; st.y = st.ty; }
+  const e = st.enter, ease = 1 - Math.pow(1 - e, 3);
+  const drop = st.dropping ? st.dropping(now) : null;
+  const [wx, wy] = world(st.x + S / 2, st.y);
+  st.group.position.set(wx + (drop ? drop.x : 0), wy + (1 - ease) * 22 + (drop ? drop.y : 0), 3 + (1 - ease) * 240 + (drop ? drop.z : 0) + st.layer * .01);
+  st.group.rotation.z = -(st.tilt + (1 - ease) * -6 + (drop ? drop.r : 0)) * DEG;
+  st.paperMesh.material.opacity = 1;
+  const bend = st.rest + g + st.h + breeze + (1 - ease) * 30;
+  if (Math.abs(bend - st.bend) > .02) {
+    st.bend = bend;
+    bendSheet(st.sheet, bend, st.corner * clamp(bend / 25, 0, 1.4));
+    st.shadow.position.set(S * .02, -S * .5 - S * .035 - bend * S * .0018, -1.5);
+    st.shadow.material.opacity = clamp(.32 + bend * .009, .32, .6);
+  }
+  return moving;
+}
+
+// ---------- banner: torn strip of paper with marker lettering ----------
+let banner = null;
+function tornPoly(w, h, rough, seed) {
+  const R = rng(seed), pts = [];
+  for (let x = 0; x < w; x += 4 + R() * 9) pts.push([x, R() * rough * .55 + (R() < .07 ? rough * .7 : 0)]);
+  for (let y = 0; y < h; y += 3 + R() * 7) pts.push([w - R() * rough * .8 - (R() < .1 ? rough * .6 : 0), y]);
+  for (let x = w; x > 0; x -= 3 + R() * 7) pts.push([x, h - R() * rough - (R() < .1 ? rough : 0) - (1 + Math.sin(x / w * Math.PI * 3 + seed)) * rough * .3]);
+  for (let y = h; y > 0; y -= 3 + R() * 7) pts.push([R() * rough * .8 + (R() < .1 ? rough * .6 : 0), y]);
+  return pts;
+}
+function drawBanner() {
+  const title = (CONFIG.boardTitle || '').trim();
+  if (banner) { scene.remove(banner.group); banner.sheet.geo.dispose(); banner.tex.dispose(); banner = null; }
+  if (!title) { bannerBottom = 0; return; }
+  const em = clamp(W * .017, 11, 27), ts = em * 3.3;
+  mctx.font = `${ts}px 'Kaushan Script'`;
+  const tw = mctx.measureText(title).width;
+  const bw = Math.min(W * .94, tw + em * 13.2), bh = ts * 1.1 + em * 2.6;
+  const T = DPR * 1.25, pad = em * 1.2;
+  const c = mkCanvas((bw + pad * 2) * T, (bh + pad * 2) * T), g = c.getContext('2d');
+  g.setTransform(T, 0, 0, T, pad * T, pad * T);
+  const path = (pts) => { g.beginPath(); pts.forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.closePath(); };
+  const seed = hash(title) % 1000;
+  // drop shadow, pale torn fibres, then the sheet itself
+  g.save(); g.filter = `blur(${em * .5}px)`; g.fillStyle = 'rgba(40,30,15,.28)'; g.translate(em * .15, em * .45); path(tornPoly(bw, bh, 3.2, seed)); g.fill(); g.restore();
+  g.fillStyle = '#fffdf8'; path(tornPoly(bw, bh, 3.2, seed)); g.fill();
+  g.save(); path(tornPoly(bw, bh, 6.5, seed + 1)); g.clip();
+  g.fillStyle = '#f6f0e2'; g.fillRect(0, 0, bw, bh);
+  g.fillStyle = g.createPattern(grain, 'repeat'); g.fillRect(0, 0, bw, bh);
+  const rg = g.createRadialGradient(bw / 2, bh * .4, 0, bw / 2, bh * .4, bw * .6); rg.addColorStop(0, 'rgba(255,255,255,.5)'); rg.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = rg; g.fillRect(0, 0, bw, bh);
+  g.restore();
+  // lettering, red underline and a little heart
+  const tx = (bw - tw) / 2, base = em * 1.35 + ts * .86;
+  g.fillStyle = '#1f1d2b'; g.globalAlpha = .93; g.font = `${ts}px 'Kaushan Script'`; g.fillText(title, tx, base); g.globalAlpha = 1;
+  g.strokeStyle = ACCENT; g.globalAlpha = .88; g.lineWidth = em * .32; g.lineCap = 'round';
+  g.beginPath(); g.moveTo(tx + tw * .03, base + ts * .2); g.bezierCurveTo(tx + tw * .25, base + ts * .1, tx + tw * .6, base + ts * .06, tx + tw * .94, base + ts * .12); g.stroke();
+  const hx = tx + tw + ts * .12, hy = base + ts * .22, hs = ts * .2;
+  g.lineWidth = em * .2; g.beginPath(); g.moveTo(hx, hy + hs * .45);
+  g.bezierCurveTo(hx - hs * .75, hy + hs * .05, hx - hs * .9, hy - hs * .3, hx - hs * .6, hy - hs * .55);
+  g.bezierCurveTo(hx - hs * .35, hy - hs * .75, hx - hs * .05, hy - hs * .6, hx, hy - hs * .3);
+  g.bezierCurveTo(hx + hs * .05, hy - hs * .6, hx + hs * .35, hy - hs * .75, hx + hs * .6, hy - hs * .55);
+  g.bezierCurveTo(hx + hs * .9, hy - hs * .3, hx + hs * .75, hy + hs * .05, hx, hy + hs * .45); g.stroke(); g.globalAlpha = 1;
+  // flowers, leaves, a star and sparkles
+  const put = (k, x, y, s, rot, flip) => {
+    const img = iconImage(k); if (!img) return;
+    g.save(); g.translate(x + s / 2, y + s / 2); g.rotate(rot * DEG); if (flip) g.scale(-1, 1); g.drawImage(img, -s / 2, -s / 2, s, s); g.restore();
+  };
+  put('star', em * .7, em * .35, em * 1.4, -8);
+  put('leaves', em * .6, em * 2.0, em * 2.8, 0);
+  put('flower', em * 2.1, em * .95, em * 3.9, -8);
+  put('leaves', bw - em * .6 - em * 2.8, em * 2.0, em * 2.8, 0, true);
+  put('flowerBlue', bw - em * 2.0 - em * 3.6, em * 1.0, em * 3.6, 8);
+  g.strokeStyle = '#f5b818'; g.lineWidth = em * .18; g.lineCap = 'round';
+  const sx = bw - em * 6.2 - em * .8, sy = em * 1.3;
+  g.beginPath(); g.moveTo(sx - em * .5, sy - em * .4); g.lineTo(sx - em * .15, sy - em * .05); g.moveTo(sx, sy - em * .7); g.lineTo(sx, sy - em * .2); g.moveTo(sx + em * .5, sy - em * .4); g.lineTo(sx + em * .15, sy - em * .05); g.stroke();
+  // seasonal touches
+  const hol = SEASON.holiday;
+  if (hol === 'halloween' || hol === 'thanksgiving') {
+    put('pumpkin', em * 4.6, bh - em * 3.0, em * 2.6, -8);
+    put('pumpkin', bw - em * 7.0, bh - em * 2.8, em * 2.2, 10);
+  } else if (hol === 'valentine') {
+    put('heart', em * 5.2, em * .25, em * 1.3, -14); put('heart', bw - em * 6.8, bh - em * 2.5, em * 1.5, 12); put('heart', bw - em * 2.0, em * .15, em * 1.1, 18);
+  } else if (hol === 'christmas') {
+    put('tree', em * 4.6, bh - em * 3.4, em * 2.6, -4);
+    const J = rng(7); g.save(); g.fillStyle = '#ffffff'; g.shadowColor = 'rgba(120,150,200,.5)'; g.shadowBlur = em * .2; g.shadowOffsetY = em * .08;
+    g.beginPath(); g.moveTo(em * .3, em * .2);
+    for (let x = em * .3; x <= bw - em * .3; x += em * .9) g.quadraticCurveTo(x + em * .45, em * (.75 + J() * .35), x + em * .9, em * (.3 + J() * .2));
+    g.lineTo(bw - em * .3, 0); g.lineTo(em * .3, 0); g.fill(); g.restore();
+  }
+
+  const tex = texFrom(c);
+  const sheet = makeSheet(10, 8);
+  const mesh = new THREE.Mesh(sheet.geo, new THREE.MeshBasicMaterial({ map: tex, transparent: true, vertexColors: true, depthWrite: false }));
+  const fullW = bw + pad * 2, fullH = bh + pad * 2;
+  mesh.scale.set(fullW, fullH, fullW);
+  mesh.position.set(0, pad, 0);
+  const group = new THREE.Group(); group.add(mesh);
+  const pins = [[bw * .17 + em * 1.05, -em * .5 + em * 1.05, '#e0443b'], [bw * .85 - em * 1.05, -em * .62 + em * 1.05, '#1fa3a0']];
+  for (const [px, py, col] of pins) {
+    const pm = new THREE.Mesh(new THREE.PlaneGeometry(em * 2.6, em * 2.6), new THREE.MeshBasicMaterial({ map: pinTexture(col), transparent: true, depthWrite: false }));
+    pm.position.set(px - bw / 2 + em * .15, -py + em * .1, 4); group.add(pm);
+  }
+  const topPx = clamp(H * .022, 12, 28);
+  const [gx, gy] = world(W / 2, topPx);
+  group.position.set(gx, gy, 2);
+  group.rotation.z = 1.4 * DEG;
+  scene.add(group);
+  banner = { group, sheet, tex, bend: 0, events: [] };
+  bendSheet(sheet, 0, 0, .3);
+  bannerBottom = topPx + bh + em * .3;
+}
+function stepBanner(now) {
+  if (!banner) return false;
+  let g = 0;
+  banner.events = banner.events.filter(ev => { const u = (now - ev.t0) / ev.dur; if (u < 0) return true; g += ev.fn(Math.min(1, u)); return u < 1; });
+  if (Math.abs(g - banner.bend) > .02) { banner.bend = g; bendSheet(banner.sheet, g, 0, .3); }
+  return banner.events.length > 0;
+}
+
+// ---------- plants in the top corners ----------
+const plants = [];
+function plantSVG(pi) {
+  const LEAFP = 'M0 0 C -10 -5 -14 -19 -6 -28 C -3 -31 0 -30 0 -27 C 0 -30 3 -31 6 -28 C 14 -19 10 -5 0 0 Z';
+  const R = rng(4242 + pi * 77);
+  let defs = '', stems = '', leaves = '';
+  const greens = [['#2f6b28', '#5fa33f'], ['#3b7d2e', '#79b84a'], ['#2a5f2a', '#4f9440'], ['#44862f', '#8cc25a']];
+  greens.forEach(([a, b], i) => { defs += `<linearGradient id="lg${pi}${i}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${b}"/><stop offset="1" stop-color="${a}"/></linearGradient>`; });
+  const leaf = (x, y, ang, s) => {
+    const g = Math.floor(R() * greens.length);
+    leaves += `<g transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${ang.toFixed(1)}) scale(${s.toFixed(2)})"><path d="${LEAFP}" fill="url(#lg${pi}${g})" stroke="#24521f" stroke-width=".8" stroke-opacity=".5"/><path d="M0 -2 C -1 -10 0 -19 0 -26" fill="none" stroke="#c9e6a8" stroke-opacity=".55" stroke-width="1"/></g>`;
+  };
+  for (const [sx, sy, dir, n] of [[10, 0, 72, 9], [40, -5, 52, 7], [0, 20, 86, 10], [70, -8, 38, 5]]) {
+    let x = sx, y = sy, a = dir * Math.PI / 180, d = `M${x} ${y}`;
+    for (let i = 0; i < n; i++) {
+      a += (R() - .45) * .28;
+      const len = 24 + R() * 10, nx = x + Math.cos(a) * len, ny = y + Math.sin(a) * len;
+      d += ` Q ${(x + nx) / 2 + (R() - .5) * 8} ${(y + ny) / 2 + (R() - .5) * 8} ${nx.toFixed(1)} ${ny.toFixed(1)}`;
+      x = nx; y = ny;
+      leaf(x, y, a * 180 / Math.PI + 90 + (i % 2 ? 1 : -1) * (40 + R() * 40), 0.95 + R() * 0.6 - i * 0.03);
+    }
+    stems += `<path d="${d}" fill="none" stroke="#4d7a2e" stroke-width="2.4" stroke-linecap="round"/>`;
+  }
+  for (let i = 0; i < 9; i++) leaf(8 + R() * 70, -6 + R() * 34, 120 + R() * 140, 1.3 + R() * 0.6);
+  return `<svg viewBox="-20 -30 320 410"><defs>${defs}</defs>${stems}${leaves}</svg>`;
+}
+function buildPlantsSVG() {
+  for (const p of plants) { scene.remove(p.group); p.mesh?.material.map.dispose(); p.mesh?.geometry.dispose(); }
+  plants.length = 0;
+  const pw = clamp(W * .21, 150, 330), ph = pw * 380 / 300;
+  [0, 1].forEach(pi => {
+    const img = new Image();
+    const svg = plantSVG(pi).replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" width="600" height="760" ');
+    const pad = pw * .12, T = DPR * 1.2;
+    const c = mkCanvas((pw + pad * 2) * T, (ph + pad * 2) * T);
+    const tex = texFrom(c);
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(pw + pad * 2, ph + pad * 2), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false }));
+    const group = new THREE.Group(); group.add(mesh);
+    // pivot near the top corner it hangs from
+    const pivotX = pi === 0 ? -W * .012 + pw * .08 : W + W * .012 - pw * .08, pivotY = -H * .02;
+    const [gx, gy] = world(pivotX, pivotY);
+    group.position.set(gx, gy, 1.5);
+    mesh.position.set((pi === 0 ? 1 : -1) * ((pw + pad * 2) / 2 - pw * .08 - pad), -((ph + pad * 2) / 2 - pad), 0);
+    if (pi === 1) mesh.scale.x = -1;
+    scene.add(group);
+    const P = { group, mesh, events: [], rot: 0 };
+    plants.push(P);
+    img.onload = () => {
+      const g = c.getContext('2d'); g.setTransform(T, 0, 0, T, 0, 0);
+      g.save(); g.filter = 'blur(10px) brightness(0)'; g.globalAlpha = .22; g.drawImage(img, pad + 10, pad + 18, pw, ph); g.restore();
+      g.drawImage(img, pad, pad, pw, ph);
+      tex.needsUpdate = true; kick();
+    };
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  });
+}
+function stepPlants(now) {
+  let moving = false;
+  for (const p of plants) {
+    let g = 0;
+    p.events = p.events.filter(ev => { const u = (now - ev.t0) / ev.dur; if (u < 0) return true; g += ev.fn(Math.min(1, u)); return u < 1; });
+    if (p.events.length) moving = true;
+    p.group.rotation.z = g * DEG;
+    if (p.play) {
+      const f = Math.floor((now - p.play.t0) / p.sheet.ms);
+      if (f < 0) { moving = true; continue; }
+      if (f >= p.sheet.n * p.play.loops) { p.play = null; showFrame(p.tex, p.sheet, 0); }
+      else { showFrame(p.tex, p.sheet, f); moving = true; }
+    }
+  }
+  return moving;
+}
+
+// ---------- lighting, and the wall that catches shadows ----------
+const WALL_Z = -60;                       // the wall sits a little back so the plants have depth in front of it
+let plantShadowPlane = null;
+const hemi = new THREE.HemisphereLight(0xfff8ec, 0xa89a7c, 2.3);
+const sun = new THREE.DirectionalLight(0xfff0d8, 2.6);
+scene.add(hemi, sun, sun.target);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+sun.castShadow = true;
+sun.shadow.mapSize.set(TV ? 1024 : 2048, TV ? 1024 : 2048);
+sun.shadow.bias = -0.0005;
+function placeSun() {
+  sun.position.set(-0.45 * 3000, 0.8 * 3000, 1.6 * 3000);   // mostly from the front, so leaves read clearly
+  sun.target.position.set(0, 0, 0);
+  const c = sun.shadow.camera;
+  c.left = -W * .6; c.right = W * .6; c.top = H * .6; c.bottom = -H * .6; c.near = 100; c.far = 9000;
+  c.updateProjectionMatrix();
+}
+// Animated sprite sheets made from the family's GIFs (assets/originals): each frame sits in a grid.
+const SHEETS = {
+  butterfly: { src: 'assets/butterfly-sheet.png', cols: 4, rows: 4, n: 16, ms: 70, w: 322, h: 304 },
+  pothos1:   { src: 'assets/pothos-1-sheet.png',  cols: 3, rows: 3, n: 9,  ms: 220, w: 430, h: 432 },
+  pothos2:   { src: 'assets/pothos-2-sheet.png',  cols: 4, rows: 3, n: 12, ms: 150, w: 362, h: 362 },
+};
+const sheetTex = {};
+async function loadSheets() {
+  const L = new THREE.TextureLoader();
+  await Promise.all(Object.entries(SHEETS).map(async ([k, s]) => {
+    const t = await L.loadAsync(s.src);
+    t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+    t.repeat.set(1 / s.cols, 1 / s.rows);
+    sheetTex[k] = t;
+  }));
+}
+// a private copy of a sheet's texture (shares the image) so each sprite can show its own frame
+function spriteTex(k) { const t = sheetTex[k].clone(); t.needsUpdate = true; return t; }
+function showFrame(tex, sheet, i) {
+  i = ((i % sheet.n) + sheet.n) % sheet.n;
+  tex.offset.set((i % sheet.cols) / sheet.cols, 1 - (Math.floor(i / sheet.cols) + 1) / sheet.rows);
+}
+
+// ---------- pothos hanging into the top corners ----------
+// Shown still, on the first frame of each GIF.
+let buildPlants = function () {
+  for (const p of plants) { scene.remove(p.group); p.mesh?.geometry.dispose(); p.mesh?.material.dispose(); p.tex?.dispose(); }
+  plants.length = 0;
+  if (plantShadowPlane) { scene.remove(plantShadowPlane); plantShadowPlane.geometry.dispose(); }
+  if (!sheetTex.pothos1) return;
+  placeSun();
+  plantShadowPlane = new THREE.Mesh(new THREE.PlaneGeometry(W * 1.3, H * 1.3), new THREE.ShadowMaterial({ opacity: .18 }));
+  plantShadowPlane.position.z = WALL_Z + 1; plantShadowPlane.receiveShadow = true;
+  scene.add(plantShadowPlane);
+  const size = clamp(Math.min(W * .27, H * .38), 220, 480);
+  // vines drape down the screen edges, beside the notes: pothos 2 on the left as drawn, pothos 1 mirrored on the right
+  [[0, 'pothos2', false], [1, 'pothos1', true]].forEach(([side, key, mirror]) => {
+    const sh = SHEETS[key], tex = spriteTex(key);
+    showFrame(tex, sh, 0);
+    const w = size, h = size * sh.h / sh.w;
+    const mat = new THREE.MeshBasicMaterial({ map: tex, alphaTest: .5, side: THREE.DoubleSide });
+    mat.color.setRGB(...({ winter: [.86, .92, 1.0], spring: [1.0, 1.04, .95], summer: [1, 1, 1], autumn: [1.04, .93, .74] })[SEASON.season]);
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
+    mesh.castShadow = true;
+    if (mirror) mesh.scale.x = -1;
+    const group = new THREE.Group(); group.add(mesh);
+    const [cx, cy] = world(side === 0 ? 0 : W, 0);
+    group.position.set(cx, cy, WALL_Z + 30);                  // pivot at the corner, standing off the wall a little
+    // tuck the top of the clump just past the screen edge
+    mesh.position.set((side === 0 ? 1 : -1) * (w / 2 - w * .12), -(h / 2 - h * .14), 0);
+    scene.add(group);
+    plants.push({ group, mesh, tex, sheet: sh, events: [], play: null });
+  });
+  kick();
+};
+
+// ---------- a butterfly that drops by and rests on a note ----------
+function makeButterfly() {
+  const sh = SHEETS.butterfly, tex = spriteTex('butterfly');
+  showFrame(tex, sh, 0);
+  const B = clamp(S * .34, 62, 110);                         // wingspan
+  const mat = new THREE.MeshBasicMaterial({ map: tex, alphaTest: .5, side: THREE.DoubleSide });
+  const geo = new THREE.PlaneGeometry(B, B * sh.h / sh.w);
+  const mesh = new THREE.Mesh(geo, mat); mesh.castShadow = true;
+  // its own soft shadow on the paper it lands on (the notes don't take part in shadow mapping)
+  const shMat = new THREE.MeshBasicMaterial({ map: tex, color: 0x2a1c0c, transparent: true, opacity: 0, alphaTest: .04, depthWrite: false });   // alphaTest is checked after opacity, so keep it low
+  const shadow = new THREE.Mesh(geo, shMat); shadow.renderOrder = -1;
+  const shMat2 = shMat.clone(); const shadow2 = new THREE.Mesh(geo, shMat2); shadow2.scale.setScalar(1.06); shadow2.renderOrder = -2;
+  const group = new THREE.Group(); group.add(shadow2, shadow, mesh);
+  scene.add(group);
+  return { group, mesh, shadow, shadow2, tex, sheet: sh, B, parts: [geo, mat, shMat, shMat2] };
+}
+
+function bezier(p0, p1, p2, p3, t) { const u = 1 - t; return u * u * u * p0 + 3 * u * u * t * p1 + 3 * u * t * t * p2 + t * t * t * p3; }
+// ---------- butterflies (up to three at a time) dropping by to rest on notes ----------
+const MAX_BUTTERFLIES = TV ? 2 : 3;
+const butterflies = [];
+function butterflyVisit() {
+  if (butterflies.length >= MAX_BUTTERFLIES || !live.size || document.hidden || reduceMotion || !sheetTex.butterfly) return;
+  if (lightNow.night > .5) return;                     // butterflies sleep at night
+  const taken = new Set(butterflies.map(b => b.st));
+  const notes = [...live.values()].filter(st => st.enter >= 1 && !st.dropping && !taken.has(st));
+  if (!notes.length) return;
+  const st = notes[Math.floor(Math.random() * notes.length)];
+  const b = makeButterfly();
+  const fromLeft = Math.random() < .5;
+  // perch in the note's top-right corner, clear of the writing
+  const local = new THREE.Vector3(S * (.33 + Math.random() * .1), -S * (.08 + Math.random() * .06), 6);
+  butterflies.push({ ...b, st, local, mode: 'in', t0: performance.now(), dur: 4200 + Math.random() * 1600,
+    start: new THREE.Vector3((fromLeft ? -1 : 1) * (W / 2 + 80), H * (.1 + Math.random() * .35), 120),
+    c1: new THREE.Vector3((Math.random() - .5) * W * .8, H * (Math.random() - .3) * .6, 160),
+    c2: new THREE.Vector3((Math.random() - .5) * W * .6, -H * Math.random() * .3, 110),
+    heading: 0, restEnd: 0, nextFlap: 0, restHeading: (Math.random() - .5) * 1.2, phase: Math.random() * 1000 });
+  kick();
+}
+// a small group arrives a moment apart: one, two or three butterflies
+function butterflyGroup() {
+  const room = MAX_BUTTERFLIES - butterflies.length;
+  if (room <= 0) return;
+  const r = Math.random(), n = Math.min(room, r < .4 ? 1 : r < .75 ? 2 : 3);
+  for (let i = 0; i < n; i++) setTimeout(butterflyVisit, i * (1200 + Math.random() * 2500));
+}
+function landingPoint(bf) { return bf.st.group.localToWorld(bf.local.clone()); }
+function leave(bf, now) {
+  if (bf.mode === 'out') return;
+  const p = bf.group.position.clone(), away = p.x > 0 ? 1 : -1;
+  bf.mode = 'out'; bf.t0 = now; bf.dur = 3200;
+  bf.start = p; bf.c1 = new THREE.Vector3(p.x + away * 60, p.y + 120, 150); bf.c2 = new THREE.Vector3(p.x + away * W * .35, p.y + H * .3, 160);
+  bf.end = new THREE.Vector3(away * (W / 2 + 120), H * (.2 + Math.random() * .4), 160);
+}
+function stepOneButterfly(bf, now) {
+  if (bf.mode !== 'out' && (!live.has(bf.st.id) || bf.st.dropping)) leave(bf, now);
+  const g = bf.group;
+  let flap = 0, moving = true;
+  if (bf.mode === 'in' || bf.mode === 'out') {
+    const u = clamp((now - bf.t0) / bf.dur, 0, 1), e = bf.mode === 'in' ? 1 - Math.pow(1 - u, 2.2) : u * u;
+    const end = bf.mode === 'in' ? landingPoint(bf) : bf.end;
+    const x = bezier(bf.start.x, bf.c1.x, bf.c2.x, end.x, e), y = bezier(bf.start.y, bf.c1.y, bf.c2.y, end.y, e) + Math.sin(now / 160) * 6 * (1 - u);
+    const z = bezier(bf.start.z, bf.c1.z, bf.c2.z, end.z, e);
+    const vx = x - g.position.x, vy = y - g.position.y;
+    if (Math.abs(vx) + Math.abs(vy) > .3) bf.heading = Math.atan2(vy, vx) - Math.PI / 2;
+    g.position.set(x, y, z);
+    if (bf.mode === 'in' && u > .85) bf.heading += (bf.restHeading - bf.heading) * .15;
+    if (u >= 1) {
+      if (bf.mode === 'in') { bf.mode = 'rest'; bf.restEnd = now + 8000 + Math.random() * 8000; bf.nextFlap = now + 900 + Math.random() * 1500; }
+      else { scene.remove(g); bf.parts.forEach(p => p.dispose()); bf.tex.dispose(); clearTimeout(bf.wake); butterflies.splice(butterflies.indexOf(bf), 1); return false; }
+    }
+  } else {                                          // resting: open and close the wings now and then
+    g.position.copy(landingPoint(bf));
+    bf.heading = bf.restHeading + bf.st.group.rotation.z;
+    if (now >= bf.restEnd) { leave(bf, now); }
+    else if (now >= bf.nextFlap) {
+      const u = (now - bf.nextFlap) / 900;
+      if (u >= 1) { bf.nextFlap = now + 1500 + Math.random() * 2500; flap = 8 * DEG; moving = false; setTimeout(kick, bf.nextFlap - now); }
+      else flap = (8 + 44 * Math.sin(Math.PI * u)) * DEG;
+    } else { flap = 8 * DEG; moving = false; if (!bf.wake) { bf.wake = setTimeout(() => { bf.wake = null; kick(); }, Math.max(16, Math.min(bf.nextFlap, bf.restEnd) - now)); } }
+  }
+  g.rotation.z = bf.heading;
+  // shadow on the note: close and crisp when perched, further off and fainter as it rises
+  const surfaceZ = bf.mode === 'out' ? (live.has(bf.st.id) ? bf.st.group.position.z : 3) : landingPoint(bf).z - 6;
+  const h = Math.max(1, g.position.z - surfaceZ);
+  const near = clamp(1 - (h - 6) / 260, .35, 1);
+  const lift = bf.B * .14 + h * .42;                          // even perched, wings stand a little off the paper
+  const wx = lift * .75, wy = -lift;                         // light comes from the upper left
+  const c = Math.cos(-bf.heading), sn = Math.sin(-bf.heading);
+  for (const [m, op] of [[bf.shadow, .26], [bf.shadow2, .12]]) {
+    m.position.set(wx * c - wy * sn, wx * sn + wy * c, -h + 1.5);
+    m.material.opacity = op * near;
+    m.visible = near > 0;
+  }
+  bf.mesh.castShadow = false;                                // its own shadow above covers notes and wall alike
+  // flying: the full flutter cycle; resting: wings open, closing (frames 0→4→0) when it flaps
+  showFrame(bf.tex, bf.sheet, bf.mode === 'rest' ? Math.round(clamp((flap - 8 * DEG) / (44 * DEG), 0, 1) * 4) : Math.floor((now + bf.phase) / bf.sheet.ms));
+  return moving;
+}
+function stepButterfly(now) {
+  let moving = false;
+  for (const bf of [...butterflies]) if (stepOneButterfly(bf, now)) moving = true;
+  return moving;
+}
+
+// ---------- maple leaves drifting across the wall (big, curled, in autumn shades) ----------
+const MAPLE = [[0,-.55],[.12,-.62],[.45,-.5],[.38,-.38],[.82,-.2],[.7,-.08],[.98,.25],[.62,.22],[.58,.38],[.42,.28],[.36,.62],[.2,.55],[0,.98],[-.2,.55],[-.36,.62],[-.42,.28],[-.58,.38],[-.62,.22],[-.98,.25],[-.7,-.08],[-.82,-.2],[-.38,-.38],[-.45,-.5],[-.12,-.62]];
+const mapleTex = [];
+function mapleTexture(k) {
+  if (mapleTex[k]) return mapleTex[k];
+  const c = mkCanvas(512, 512), g = c.getContext('2d'), R = rng(31 + k * 7);
+  const P = ([x, y]) => [256 + x * 236, 256 - y * 236];
+  // serrated outline: small teeth between the main points
+  const pts = [];
+  MAPLE.forEach((p, i) => {
+    const q = MAPLE[(i + 1) % MAPLE.length];
+    for (let t = 0; t < 1; t += .34) {
+      const x = p[0] + (q[0] - p[0]) * t, y = p[1] + (q[1] - p[1]) * t, out = t ? .025 * (R() + .4) : 0;
+      const r = Math.hypot(x, y + .2) || 1;
+      pts.push([x + x / r * out, y + (y + .2) / r * out]);
+    }
+  });
+  g.beginPath(); pts.forEach((p, i) => { const [x, y] = P(p); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.closePath();
+  const [c0, c1, c2, c3] = FALL_SHADES[k];
+  const gr = g.createRadialGradient(256, 300, 10, 256, 256, 260);
+  gr.addColorStop(0, c0); gr.addColorStop(.35, c1); gr.addColorStop(.75, c2); gr.addColorStop(1, c3);
+  g.fillStyle = gr; g.fill();
+  g.save(); g.clip();
+  for (let i = 0; i < 60; i++) {                   // blotches and speckles of a real fallen leaf
+    g.fillStyle = `rgba(${R() < .5 ? '120,40,10' : '250,200,90'},${.05 + R() * .08})`;
+    g.beginPath(); g.ellipse(40 + R() * 432, 40 + R() * 432, 6 + R() * 26, 4 + R() * 18, R() * 3, 0, 6.29); g.fill();
+  }
+  // main veins from the stem to each lobe tip, with side veins
+  const base = P([0, -.5]);
+  g.strokeStyle = 'rgba(110,35,12,.55)'; g.lineCap = 'round';
+  for (const t of [[0, .98], [.98, .25], [-.98, .25], [.82, -.2], [-.82, -.2]]) {
+    const tip = P([t[0] * .92, t[1] * .92 - .02]);
+    g.lineWidth = 3.2; g.beginPath(); g.moveTo(...base); g.lineTo(...tip); g.stroke();
+    g.lineWidth = 1.3;
+    for (let s = .25; s < .9; s += .17) {
+      const x = base[0] + (tip[0] - base[0]) * s, y = base[1] + (tip[1] - base[1]) * s;
+      const ang = Math.atan2(tip[1] - base[1], tip[0] - base[0]);
+      for (const side of [-1, 1]) { g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(ang + side * .8) * 26, y + Math.sin(ang + side * .8) * 26); g.stroke(); }
+    }
+  }
+  g.restore();
+  g.strokeStyle = '#6e3415'; g.lineWidth = 6; g.lineCap = 'round';
+  g.beginPath(); g.moveTo(...base); g.quadraticCurveTo(base[0] + 10, base[1] + 60, base[0] + 4, base[1] + 112); g.stroke();
+  mapleTex[k] = texFrom(c); return mapleTex[k];
+}
+// each leaf gets its own curl: lobes cupped up, a bow along the midrib, a twist and a wavy edge
+function curledLeafGeometry(size, R) {
+  const geo = new THREE.PlaneGeometry(size, size, 16, 16), pos = geo.attributes.position;
+  const cup = .22 + R() * .28, bow = (R() - .4) * .25, twist = (R() - .5) * .35, wave = .02 + R() * .03;
+  for (let i = 0; i < pos.count; i++) {
+    const nx = pos.getX(i) / size, ny = pos.getY(i) / size, dy = ny + .12, r = Math.hypot(nx, dy);
+    const a = Math.atan2(dy, nx);
+    pos.setZ(i, size * (cup * r * r * 2.2 + bow * dy * dy + twist * nx * dy + wave * r * Math.sin(a * 5 + R() * .1)));
+  }
+  geo.computeVertexNormals();
+  return geo;
+}
+const leaves = new Set();
+// Flatten an object's shape onto the note surface, shifted away from the light (upper left) by its height.
+const SURFACE_Z = 3.6, FLAT = new THREE.Matrix4().makeScale(1, 1, 0), _m = new THREE.Matrix4();
+function dropShadow(shadow, matrix, z, strength) {
+  const h = Math.max(0, z - SURFACE_Z);
+  _m.makeTranslation(h * .3, -h * .38, SURFACE_Z).multiply(FLAT).multiply(matrix);
+  shadow.matrix.copy(_m); shadow.matrixWorldNeedsUpdate = true;
+  shadow.material.opacity = strength * clamp(1 - h / 420, .35, 1);
+}
+function mapleLeaf(dir = 0, kind = currentFaller(), follower = false) {
+  const small = kind === 'snow' || kind === 'heart' || kind === 'petal';
+  if (reduceMotion || document.hidden || leaves.size > (small ? 8 : 2)) return;
+  const R = Math.random;
+  const size = small ? clamp(S * (kind === 'heart' ? .2 : kind === 'snow' ? .15 : .13), 26, 60) : clamp(S * .44, 74, 140);
+  const map = small ? smallTexture(kind) : mapleTexture(kind === 'green' ? 3 : Math.floor(R() * 3));
+  const geo = curledLeafGeometry(size, small ? () => R() * .35 : R);
+  const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map, side: THREE.DoubleSide, alphaTest: .5, roughness: .75 }));
+  // small things come in little drifts of several
+  if (small && !follower) for (let k = 1; k < 5; k++) setTimeout(() => mapleLeaf(dir, kind, true), k * (500 + R() * 900));
+  scene.add(mesh);
+  // its shadow: the same curled shape, flattened onto the surface below (notes don't receive shadow maps)
+  const shadow = new THREE.Mesh(mesh.geometry, new THREE.MeshBasicMaterial({ map: mesh.material.map, color: 0x2a1c0c, transparent: true, opacity: 0, alphaTest: .04, depthWrite: false, side: THREE.DoubleSide }));
+  shadow.matrixAutoUpdate = false; shadow.renderOrder = -1;
+  scene.add(shadow);
+  const lf = { mesh, shadow, t0: performance.now(), dur: 11000 + R() * 5000, ph: R() * 6.28, spin: [(R() - .5) * 7, (R() - .5) * 6, (R() - .5) * 3], z: 110 + R() * 90 };
+  if (dir) { lf.x0 = -dir * (W / 2 + 90); lf.x1 = dir * (W / 2 + 90); lf.y0 = H * (.15 + R() * .3); lf.y1 = lf.y0 - H * (.4 + R() * .3); lf.dur *= .75; }
+  else { lf.x0 = (R() - .5) * W * .8; lf.x1 = lf.x0 + (R() - .5) * W * .5; lf.y0 = H / 2 + 90; lf.y1 = -H / 2 - 110; }
+  leaves.add(lf); kick();
+}
+function stepLeaves(now) {
+  for (const lf of leaves) {
+    const u = (now - lf.t0) / lf.dur;
+    if (u >= 1) { scene.remove(lf.mesh, lf.shadow); lf.mesh.geometry.dispose(); lf.mesh.material.dispose(); lf.shadow.material.dispose(); leaves.delete(lf); continue; }
+    const sway = Math.sin(u * Math.PI * 2 * 3 + lf.ph);
+    lf.mesh.position.set(lf.x0 + (lf.x1 - lf.x0) * u + sway * 70, lf.y0 + (lf.y1 - lf.y0) * u + Math.abs(sway) * 22, lf.z);
+    lf.mesh.rotation.set(u * lf.spin[0] + sway * .5, u * lf.spin[1], u * lf.spin[2] + sway * .7);
+    lf.mesh.updateMatrix();
+    dropShadow(lf.shadow, lf.mesh.matrix, lf.mesh.position.z, .24);
+  }
+  return leaves.size > 0;
+}
+const DEMO = qs.get('demo') === '1';                // ?demo=1: show the butterflies and leaves straight away
+function natureTimers() {
+  // the first group comes soon after the board opens, then another every 30–70 s
+  setTimeout(DEMO ? () => { butterflyVisit(); setTimeout(butterflyVisit, 1200); setTimeout(butterflyVisit, 2600); } : butterflyGroup, DEMO ? 1500 : 7000);
+  (function groups() { setTimeout(() => { butterflyGroup(); groups(); }, DEMO ? 20000 : 30000 + Math.random() * 40000); })();
+  if (DEMO) setTimeout(() => mapleLeaf(), 2500);
+  (function leafLoop() { setTimeout(() => { if (SEASON.season !== 'summer' || Math.random() < .4) mapleLeaf(); leafLoop(); }, DEMO ? 9000 : 45000 + Math.random() * 45000); })();
+  (function flurries() { setTimeout(() => { if (SEASON.holiday === 'christmas') snowFlurry(); flurries(); }, DEMO ? 12000 : 60000 + Math.random() * 60000); })();
+  if (DEMO && SEASON.holiday === 'christmas') setTimeout(snowFlurry, 1000);
+}
+
+// ---------- time of day: warm sunrise and sunset, a dim lamp-lit night, darker still at bedtime ----------
+const LAT = +(qs.get('lat') || CONFIG.latitude || 40);           // only used for sunrise/sunset times
+const BEDTIME = +(CONFIG.bedtime ?? 22), WAKE = +(CONFIG.wake ?? 6.5);
+const overlayScene = new THREE.Scene(), overlayCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 2);
+// A full-screen grid whose colours multiply the picture below it (white = unchanged).
+const tintGeo = new THREE.PlaneGeometry(2, 2, 24, 24);
+tintGeo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(tintGeo.attributes.position.count * 3).fill(1), 3));
+const tintMesh = new THREE.Mesh(tintGeo, new THREE.MeshBasicMaterial({
+  vertexColors: true, transparent: true, depthTest: false, depthWrite: false, toneMapped: false,
+  blending: THREE.CustomBlending, blendEquation: THREE.AddEquation, blendSrc: THREE.ZeroFactor, blendDst: THREE.SrcColorFactor,
+  blendSrcAlpha: THREE.ZeroFactor, blendDstAlpha: THREE.OneFactor }));
+tintMesh.position.z = -1;                         // inside the overlay camera's view (near 0 … far 2)
+overlayScene.add(tintMesh);
+let tintOn = false, lightNow = { warm: 0, night: 0, bed: 0 };
+const isDST = (d) => { const j = new Date(d.getFullYear(), 0, 1).getTimezoneOffset(), u = new Date(d.getFullYear(), 6, 1).getTimezoneOffset(); return d.getTimezoneOffset() < Math.max(j, u); };
+function sunTimes(d) {
+  const doy = (dayStart(d) - new Date(d.getFullYear(), 0, 0)) / DAY_MS;
+  const decl = 23.44 * DEG * Math.sin(2 * Math.PI * (284 + doy) / 365);
+  const ha = Math.acos(clamp(-Math.tan(LAT * DEG) * Math.tan(decl), -1, 1)) / DEG;   // degrees
+  const noon = 12.4 + (isDST(d) ? 1 : 0), half = ha / 15;
+  return { rise: noon - half, set: noon + half };
+}
+const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+function lightAt(d) {
+  const h = d.getHours() + d.getMinutes() / 60, { rise, set } = sunTimes(d);
+  const dusk = smooth(set - .8, set + .2, h) * (1 - smooth(set + .5, set + 1.5, h));
+  const dawn = smooth(rise - .5, rise + .1, h) * (1 - smooth(rise + .4, rise + 1.3, h));
+  const night = h < 12 ? 1 - smooth(rise - .8, rise + .2, h) : smooth(set + .3, set + 1.4, h);
+  const bed = (h >= BEDTIME || h < WAKE) ? 1 : smooth(BEDTIME - .75, BEDTIME, h);
+  return { warm: Math.max(dusk, dawn * .7), night, bed };
+}
+const mix = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
+const _c = new THREE.Color();
+function updateTint() {
+  const L = lightNow = lightAt(nowDate());
+  tintOn = L.warm > .02 || L.night > .02;
+  // white (no change) → amber at sunset → blue-grey night → deeper at bedtime
+  let base = mix([255, 255, 255], [255, 208, 160], L.warm);
+  base = mix(base, mix([160, 160, 186], [112, 114, 148], L.bed), L.night);
+  const lamp = mix(base, mix([248, 230, 196], [214, 192, 160], L.bed), L.night);   // a warm lamp pool keeps the notes readable
+  const pos = tintGeo.attributes.position, col = tintGeo.attributes.color, aspect = W / H;
+  for (let i = 0; i < pos.count; i++) {
+    const dx = pos.getX(i) * aspect * .55, dy = pos.getY(i) - .25, d = Math.hypot(dx, dy);
+    const k = L.night > .05 ? Math.pow(1 - smooth(.05, 1.05, d), 1.4) : 0;
+    const c = mix(base, lamp, k);
+    _c.setRGB(c[0] / 255, c[1] / 255, c[2] / 255, THREE.SRGBColorSpace);
+    col.setXYZ(i, _c.r, _c.g, _c.b);
+  }
+  col.needsUpdate = true;
+  kick();
+}
+
+// ---------- falling things change with the season ----------
+const FALL_SHADES = [
+  ['#f4a532', '#e3561f', '#c3301a', '#8f1f12'],   // red maple
+  ['#f7c24a', '#ee8a24', '#d8621c', '#a8401a'],   // orange maple
+  ['#f8dc6a', '#f0b43a', '#d98a24', '#9c5a1c'],   // golden maple
+  ['#c8e58a', '#8cc04e', '#5f9a36', '#3d6e24'],   // summer green
+];
+const smallTex = {};
+function smallTexture(kind) {
+  if (smallTex[kind]) return smallTex[kind];
+  const c = mkCanvas(128, 128), g = c.getContext('2d');
+  g.translate(64, 64);
+  if (kind === 'snow') {
+    g.strokeStyle = '#ffffff'; g.lineCap = 'round'; g.shadowColor = 'rgba(90,130,190,.7)'; g.shadowBlur = 3;
+    for (let a = 0; a < 6; a++) {
+      g.save(); g.rotate(a * Math.PI / 3); g.lineWidth = 6;
+      g.beginPath(); g.moveTo(0, 0); g.lineTo(0, -52); g.stroke();
+      g.lineWidth = 4;
+      for (const y of [-22, -36]) { g.beginPath(); g.moveTo(0, y); g.lineTo(-12, y - 12); g.moveTo(0, y); g.lineTo(12, y - 12); g.stroke(); }
+      g.restore();
+    }
+  } else if (kind === 'heart') {
+    const gr = g.createLinearGradient(-50, -50, 50, 50); gr.addColorStop(0, '#ff7aa2'); gr.addColorStop(1, '#d6264f');
+    g.fillStyle = gr; g.beginPath(); g.moveTo(0, 46);
+    g.bezierCurveTo(-60, 4, -54, -50, 0, -22); g.bezierCurveTo(54, -50, 60, 4, 0, 46); g.fill();
+    g.fillStyle = 'rgba(255,255,255,.45)'; g.beginPath(); g.ellipse(-22, -20, 10, 6, -.6, 0, 6.29); g.fill();
+  } else if (kind === 'petal') {
+    const gr = g.createRadialGradient(0, 30, 4, 0, 0, 60); gr.addColorStop(0, '#fff3f6'); gr.addColorStop(1, '#f6a6c0');
+    g.fillStyle = gr; g.beginPath(); g.moveTo(0, 50);
+    g.bezierCurveTo(-46, 20, -36, -44, -8, -50); g.lineTo(0, -38); g.lineTo(8, -50); g.bezierCurveTo(36, -44, 46, 20, 0, 50); g.fill();
+  }
+  smallTex[kind] = texFrom(c); return smallTex[kind];
+}
+function currentFaller() {
+  const { season, holiday } = SEASON;
+  if (holiday === 'valentine') return 'heart';
+  if (holiday === 'christmas' || season === 'winter') return 'snow';
+  if (season === 'spring') return 'petal';
+  if (season === 'summer') return 'green';
+  return 'maple';
+}
+
+// ---------- Christmas: snow flurries drifting across the board ----------
+let flurry = null, flakeTex = null;
+function snowFlurry() {
+  if (flurry || reduceMotion || document.hidden) return;
+  if (!flakeTex) {
+    const c = mkCanvas(64, 64), g = c.getContext('2d'), gr = g.createRadialGradient(32, 32, 2, 32, 32, 30);
+    gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(.42, 'rgba(255,255,255,.95)'); gr.addColorStop(.58, 'rgba(150,172,205,.55)'); gr.addColorStop(1, 'rgba(150,172,205,0)');   // a faint cool rim so it shows on a pale wall
+    g.fillStyle = gr; g.fillRect(0, 0, 64, 64); flakeTex = new THREE.CanvasTexture(c);
+  }
+  const N = TV ? 70 : 140, pos = new Float32Array(N * 3), seed = [];
+  for (let i = 0; i < N; i++) seed.push({ x: (Math.random() - .5) * W * 1.1, y: H / 2 + Math.random() * H, z: 30 + Math.random() * 200, v: 40 + Math.random() * 50, ph: Math.random() * 6.28, sw: 10 + Math.random() * 25 });
+  const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const mat = new THREE.PointsMaterial({ map: flakeTex, size: clamp(S * .06, 10, 20), transparent: true, depthWrite: false, opacity: 0, sizeAttenuation: true });
+  const pts = new THREE.Points(geo, mat); scene.add(pts);
+  flurry = { pts, seed, t0: performance.now(), dur: 24000 };
+  kick();
+}
+function stepFlurry(now) {
+  if (!flurry) return false;
+  const u = (now - flurry.t0) / flurry.dur;
+  if (u >= 1) { scene.remove(flurry.pts); flurry.pts.geometry.dispose(); flurry.pts.material.dispose(); flurry = null; return false; }
+  const t = (now - flurry.t0) / 1000, p = flurry.pts.geometry.attributes.position.array;
+  flurry.seed.forEach((f, i) => {
+    let y = f.y - f.v * t; while (y < -H / 2 - 20) y += H * 1.2;
+    p[i * 3] = f.x + Math.sin(t * .8 + f.ph) * f.sw; p[i * 3 + 1] = y; p[i * 3 + 2] = f.z;
+  });
+  flurry.pts.geometry.attributes.position.needsUpdate = true;
+  flurry.pts.material.opacity = .9 * Math.min(1, u * 8, (1 - u) * 6);
+  return true;
+}
+
+// ---------- re-check the date: at midnight the highlights, season and decorations move on ----------
+function newDay() {
+  SEASON = seasonAt(nowDate());
+  for (const st of live.values()) paint(st);
+  drawBanner(); buildPlants(); updateTint();
+  scheduleMidnight();
+}
+function scheduleMidnight() {
+  const now = nowDate(), next = addDays(dayStart(now), 1);
+  setTimeout(newDay, Math.max(1000, next - now + 2000));
+}
+
+// ---------- drawing only when something moves ----------
+let rafId = 0, framesThisSecond = 0, lastPerf = performance.now(), fps = 0;
+const busyNow = new Set();
+function kick() { if (!rafId) rafId = requestAnimationFrame(loop); }
+function loop(now) {
+  rafId = 0;
+  let moving = false;
+  const busy = (what, yes) => { if (yes) { moving = true; if (PERF) busyNow.add(what); } };
+  let notesMoving = false;
+  for (const st of live.values()) if (stepNote(st, now)) notesMoving = true;
+  for (const st of dying) if (stepNote(st, now)) notesMoving = true;
+  busy('notes', notesMoving);
+  busy('banner', stepBanner(now));
+  busy('plants', stepPlants(now));
+  busy('butterfly', stepButterfly(now));
+  busy('leaf', leaves.size && stepLeaves(now));
+  busy('snow', stepFlurry(now));
+  busy('camera', stepCamera());
+  busy('cross-out', strikeAnims.size && stepStrikes(now));
+  renderer.render(scene, camera);
+  if (tintOn) { renderer.autoClear = false; renderer.render(overlayScene, overlayCam); renderer.autoClear = true; }   // evening / night light
+  framesThisSecond++;
+  if (moving) kick();
+}
+if (PERF) {
+  perfEl.style.display = 'block';
+  setInterval(() => {
+    const now = performance.now(); fps = Math.round(framesThisSecond * 1000 / (now - lastPerf)); framesThisSecond = 0; lastPerf = now;
+    perfEl.textContent = `WebGL · ${fps} frames/s${fps === 0 ? ' (idle)' : ' · ' + [...busyNow].join(', ')}${BREEZE ? ' · breeze on' : ''}${TV ? ' · TV mode' : ''}`;
+    busyNow.clear();
+  }, 1000);
+}
+
+// cross-out animation: repaint just that note for ~0.6 s
+const strikeAnims = new Map();   // st -> { keys, t0 }
+function stepStrikes(now) {
+  let moving = false;
+  for (const [st, a] of strikeAnims) {
+    const u = clamp((now - a.t0) / 650, 0, 1);
+    const prog = new Map(a.keys.map((k, i) => [k, clamp(u * a.keys.length - i, 0, 1)]));
+    paint(st, prog);
+    if (u >= 1) strikeAnims.delete(st); else moving = true;
+  }
+  return moving;
+}
+
+// ---------- hover + gentle parallax ----------
+const ray = new THREE.Raycaster(), ptr = new THREE.Vector2();
+let hovered = null, camT = { x: 0, y: 0 }, camC = { x: 0, y: 0 };
+function stepCamera() {
+  camC.x += (camT.x - camC.x) * .08; camC.y += (camT.y - camC.y) * .08;
+  const d = (H / 2) / Math.tan(15 * DEG);
+  camera.position.set(camC.x * W * .025, -camC.y * H * .02, d);
+  camera.lookAt(0, 0, 0);
+  return Math.abs(camT.x - camC.x) + Math.abs(camT.y - camC.y) > .002;
+}
+addEventListener('pointermove', (e) => {
+  ptr.set(e.clientX / W * 2 - 1, -(e.clientY / H) * 2 + 1);
+  if (!reduceMotion && !TV) { camT.x = ptr.x; camT.y = -ptr.y; }
+  ray.setFromCamera(ptr, camera);
+  const hit = ray.intersectObjects([...live.values()].map(st => st.paperMesh), false)[0];
+  const st = hit ? [...live.values()].find(s => s.paperMesh === hit.object) : null;
+  if (st !== hovered) { if (hovered) hovered.hTarget = 0; if (st) st.hTarget = 14; hovered = st; }
+  for (const bf of butterflies) if (bf.mode === 'rest') {
+    const v = bf.group.position.clone().project(camera);
+    if (Math.hypot((v.x - ptr.x) * W / 2, (v.y - ptr.y) * H / 2) < 90) leave(bf, performance.now());
+  }
+  kick();
+});
+
+// ---------- wind gusts ----------
+function gust() {
+  if (!document.hidden && live.size && !reduceMotion) {
+    const dir = Math.random() < .5 ? -1 : 1, strength = .6 + Math.random() * .7, travel = 700 + Math.random() * 700, now = performance.now();
+    for (const st of live.values()) {
+      const t = (dir > 0 ? st.x + S / 2 : W - st.x - S / 2) / Math.max(1, W), amp = (16 + Math.random() * 12) * strength;
+      st.events.push({ t0: now + t * travel, dur: 1800 + Math.random() * 600, fn: (u) => amp * Math.pow(Math.sin(Math.PI * u), 1.4) * (.75 + .35 * Math.cos(u * Math.PI * 5)) });
+    }
+    if (banner) banner.events.push({ t0: now + travel * .5, dur: 2000, fn: (u) => 9 * strength * Math.sin(Math.PI * u) * (.7 + .3 * Math.cos(u * Math.PI * 4)) });
+    if (Math.random() < .3) mapleLeaf(dir);
+    // the corner plants stay still
+    kick();
+  }
+  setTimeout(gust, 7000 + Math.random() * 9000);
+}
+
+// ---------- peel off ----------
+const dying = new Set();
+function peelOff(id) {
+  const st = live.get(id); if (!st) return;
+  live.delete(id);
+  if (reduceMotion) { disposeNote(st); return; }
+  const dir = Math.random() < .5 ? -1 : 1, t0 = performance.now();
+  st.events.push({ t0, dur: 2100, hold: true, fn: (u) => u < .45 ? 60 * Math.sin(u / .45 * Math.PI / 2) : 60 - 30 * (u - .45) / .55 });
+  st.dropping = (now) => {
+    const u = clamp((now - t0) / 2100, 0, 1);
+    if (u < .38) return { x: 0, y: 0, z: 0, r: 0 };
+    const v = (u - .38) / .62;
+    return { x: dir * 140 * v, y: -(H + 260) * v * v, z: 90 * Math.min(1, v * 3), r: dir * 55 * v };
+  };
+  dying.add(st); kick();
+  setTimeout(() => { dying.delete(st); disposeNote(st); kick(); }, 2300);
+}
+
+// ---------- applying a new version of the file ----------
+let lastText = null, doneSeen = new Set(), firstLoad = true;
+const keyOf = (n, it) => `${n.gid}|${it.text}`;
+function update(md, refresh = false) {
+  const groups = parse(md);
+  const newS = chooseSize(groups), resized = newS !== S;
+  S = newS;
+  const notes = toNotes(groups, S), ids = new Set(notes.map(n => n.id));
+  const nowDone = new Set(); for (const n of notes) for (const it of n.items) if (it.done) nowDone.add(keyOf(n, it));
+  const fresh = firstLoad ? new Set() : new Set([...nowDone].filter(k => !doneSeen.has(k)));
+  doneSeen = nowDone;
+  for (const id of [...live.keys()]) if (!ids.has(id)) peelOff(id);
+  const now = Date.now(), keepMs = CONFIG.doneHours * 3600e3;
+  for (const id of Object.keys(doneAt)) if (!ids.has(id)) delete doneAt[id];
+  const shown = notes.filter(n => !expired(n, now));
+  const grid = gridPack(clustersOf(shown), S) || gridPack(clustersOf(shown), S, true);
+  let i = 0, layer = 0;
+  for (const n of notes) {
+    let expiresAt = null;
+    if (n.allDone) { if (!doneAt[n.id] || doneAt[n.id].sig !== n.sig) doneAt[n.id] = { sig: n.sig, at: now }; expiresAt = doneAt[n.id].at + keepMs; }
+    else delete doneAt[n.id];
+    let st = live.get(n.id);
+    if (st) {
+      if (st.sig !== n.sig || resized || refresh) {
+        st.note = n; st.sig = n.sig;
+        if (resized) sizeNote(st);
+        const keys = n.items.filter(it => it.done && fresh.has(keyOf(n, it))).map(it => keyOf(n, it));
+        if (keys.length && !reduceMotion) strikeAnims.set(st, { keys, t0: performance.now() + 150 }); else paint(st);
+        st.bend = -1;
+      }
+    } else if (expiresAt === null || expiresAt > now) {
+      st = createNote(n, firstLoad ? i++ * 140 : 0);
+    }
+    if (st) {
+      st.expiresAt = expiresAt; st.layer = layer++;
+      const p = grid[n.id];
+      if (p) { st.tx = p.x; st.ty = p.y; if (st.enter < 1 && st.x === 0 && st.y === 0) { st.x = p.x; st.y = p.y; } }
+    }
+  }
+  store.set(DONE_KEY, doneAt);
+  sweepDone();
+  srEl.textContent = notes.map(n => `${n.group}: ${n.items.map(it => (it.done ? 'done: ' : '') + it.text).join('; ')}`).join('. ');
+  firstLoad = false;
+  kick();
+}
+function sweepDone() {
+  const now = Date.now();
+  for (const st of [...live.values()]) {
+    if (st.expiresAt == null || st.sweepTimer || st.expiresAt - now > 31000) continue;
+    st.sweepTimer = setTimeout(() => {
+      st.sweepTimer = null;
+      if (live.get(st.id) === st && st.expiresAt != null && st.expiresAt <= Date.now() + 50) peelOff(st.id); else sweepDone();
+    }, Math.max(1200, st.expiresAt - now));
+  }
+}
+setInterval(sweepDone, 30000);
+
+// ---------- reading the file: polling + live push ----------
+let liveUp = false, liveRetry = 1000;
+async function poll() {
+  try {
+    const opts = { cache: 'no-store', headers: CONFIG.headers, credentials: CONFIG.credentials };
+    let res = await fetch(CONFIG.src, opts);
+    if (res.status === 404 && CONFIG.fallbackSrc && CONFIG.src === 'api/tasks') res = await fetch(CONFIG.fallbackSrc, opts);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    received(await res.text());
+  } catch (e) {
+    if (!liveUp) setStatus(`Can't reach the task list (${e.message || 'network error'}) — retrying…`);
+  } finally {
+    setTimeout(poll, liveUp ? 60000 : (document.hidden ? Math.max(CONFIG.pollMs, 15000) : CONFIG.pollMs));
+  }
+}
+function received(text) { setStatus(''); if (text !== lastText) { lastText = text; update(text); } }
+function connectLive() {
+  if (!('WebSocket' in window) || CONFIG.src !== 'api/tasks' || !/^https?:$/.test(location.protocol)) return;
+  let ws, ping;
+  try { ws = new WebSocket(new URL('api/live', location.href).href.replace(/^http/, 'ws')); } catch (e) { return; }
+  ws.onopen = () => { liveUp = true; liveRetry = 1000; ping = setInterval(() => { try { ws.send('ping'); } catch (e) {} }, 30000); };
+  ws.onmessage = (e) => { if (e.data !== 'pong') received(String(e.data)); };
+  ws.onclose = () => { clearInterval(ping); liveUp = false; setTimeout(connectLive, liveRetry); liveRetry = Math.min(liveRetry * 2, 60000); };
+}
+
+// ---------- TV mode: keep the screen awake ----------
+function keepAwake() {
+  // 1) ask the browser to keep the screen on (re-asked whenever the page comes back into view)
+  const ask = () => { if ('wakeLock' in navigator && document.visibilityState === 'visible') navigator.wakeLock.request('screen').catch(() => {}); };
+  // 2) backup: a tiny silent black video on loop — Fire TV won't start its screensaver or sleep while video plays
+  const v = document.createElement('video');
+  v.src = 'assets/keepawake.mp4'; v.muted = true; v.loop = true; v.playsInline = true; v.setAttribute('aria-hidden', 'true');
+  v.style.cssText = 'position:fixed;left:0;bottom:0;width:2px;height:2px;opacity:.01;pointer-events:none;z-index:-1';
+  document.body.appendChild(v);
+  const play = () => { if (document.visibilityState === 'visible') v.play().catch(() => {}); };
+  ask(); play();
+  document.addEventListener('visibilitychange', () => { ask(); play(); });
+  // if autoplay was blocked, the first remote/key press starts it
+  for (const ev of ['keydown', 'pointerdown', 'touchstart']) addEventListener(ev, () => { ask(); play(); }, { once: true });
+}
+if (TV) { keepAwake(); document.body.style.cursor = 'none'; }
+
+// ---------- start ----------
+let rt;
+addEventListener('resize', () => {
+  clearTimeout(rt);
+  rt = setTimeout(() => { sizeScene(); buildWall(); drawBanner(); buildPlants(); if (lastText != null) update(lastText, true); kick(); }, 150);
+});
+sizeScene(); buildWall(); updateTint(); kick();
+setInterval(updateTint, 5 * 60 * 1000);
+scheduleMidnight();
+loadSheets().then(() => buildPlants(), (e) => { console.warn('plant images unavailable, using drawn plants', e); buildPlants = buildPlantsSVG; buildPlants(); });
+const fontLoads = ["24px 'Kaushan Script'", ...FONTS.map(f => `${f.w} 24px ${f.f.split(',')[0]}`)].map(s => document.fonts.load(s).catch(() => {}));
+Promise.race([Promise.all(fontLoads), new Promise(r => setTimeout(r, 3000))]).then(() => {
+  drawBanner(); kick();
+  poll(); connectLive();
+  if (!reduceMotion) { setTimeout(gust, 4000); natureTimers(); }
+});
+</script>
+</body>
+</html>

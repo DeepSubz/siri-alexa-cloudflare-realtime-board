@@ -1,0 +1,103 @@
+<!--TIMING {"pre": 1.4, "gap": 0.6, "post": 0.6, "gaps": {"1": 0.5, "2": 0.9, "3": 1.4, "4": 1.0}} -->
+<!--SFX [["whoosh", "c(1)-0.35", 0.45], ["whoosh-short", "c(2)+0.6", 0.4], ["pop", "c(2)+2.6", 0.5], ["impact-bass-1", "c(4)+4.2", 0.35]] -->
+<style>
+#root { background: #d9cab2; }
+.room { position: absolute; inset: 0; }
+.living { background: radial-gradient(110% 90% at 50% 20%, #e6d8c1 0%, #d4c3a7 60%, #bba78a 100%); }
+.tv { position: absolute; left: 210px; top: 90px; width: 1500px; height: 870px; background: #0d0e11; border-radius: 14px; padding: 18px;
+  box-shadow: 0 50px 90px -30px rgba(60,40,20,.55); }
+.tv .scr { position: relative; width: 100%; height: 100%; overflow: hidden; border-radius: 4px; }
+.sideboard { position: absolute; left: 330px; right: 330px; bottom: 0; height: 60px; background: linear-gradient(#8b6440, #6c4c30); border-radius: 8px 8px 0 0; }
+.kitchen { background: linear-gradient(#f1dfca 0 66%, #b8875a 66% 100%); }
+.tiles { position: absolute; left: 0; right: 0; top: 0; height: 66%; opacity: .5;
+  background: repeating-linear-gradient(0deg, transparent 0 118px, rgba(150,120,90,.25) 118px 120px), repeating-linear-gradient(90deg, transparent 0 238px, rgba(150,120,90,.25) 238px 240px); }
+.window { position: absolute; right: 150px; top: 90px; width: 460px; height: 420px; background: linear-gradient(160deg, #fff7e6, #ffe3b8); border: 14px solid #f7f0e6; border-radius: 6px; box-shadow: inset 0 0 0 4px #e5d6c2; }
+.window::after { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 12px; margin-left: -6px; background: #f7f0e6; }
+.counterEdge { position: absolute; left: 0; right: 0; top: 66%; height: 18px; background: #d6a877; }
+.bubble { position: absolute; left: 820px; top: 380px; max-width: 760px; padding: 34px 44px; border-radius: 40px 40px 40px 8px; background: #fff;
+  font: 700 58px/1.15 Outfit, sans-serif; color: #18202c; box-shadow: 0 24px 48px rgba(60,40,20,.22); }
+.bubble small { display: block; font: 600 28px Inter, sans-serif; color: #5b6576; margin-bottom: 10px; letter-spacing: .04em; }
+.time { position: absolute; left: 120px; top: 70px; font: 800 64px Outfit, sans-serif; color: #18202c; letter-spacing: -.02em; }
+.big { position: absolute; left: 0; right: 0; text-align: center; font: 800 112px/1.05 Outfit, sans-serif; color: #18202c; letter-spacing: -.025em; }
+.clockface { position: absolute; left: 960px; top: 560px; width: 0; height: 0; }
+.chip { position: absolute; width: 300px; margin-left: -150px; margin-top: -48px; height: 96px; border-radius: 22px; background: #fff; display: flex; align-items: center; gap: 16px; padding: 0 22px;
+  font: 700 30px/1.1 Outfit, sans-serif; color: #18202c; box-shadow: 0 18px 36px rgba(20,24,32,.16); border: 3px solid var(--c); }
+.chip i { flex: none; width: 22px; height: 22px; border-radius: 50%; background: var(--c); }
+.dial { position: absolute; left: -330px; top: -330px; width: 660px; height: 660px; border-radius: 50%; border: 4px solid #18202c22; }
+.hand { position: absolute; left: -4px; top: -300px; width: 8px; height: 300px; background: #18202c; border-radius: 4px; transform-origin: 50% 100%; }
+.hub { position: absolute; left: -16px; top: -16px; width: 32px; height: 32px; border-radius: 50%; background: #e0662a; }
+.clocktitle { position: absolute; left: 0; right: 0; top: 70px; text-align: center; font: 800 72px Outfit, sans-serif; color: #18202c; letter-spacing: -.02em; }
+.packet { position: absolute; width: 28px; height: 28px; margin: -14px 0 0 -14px; border-radius: 50%; background: #2f6ff2; border: 5px solid #fff; box-shadow: 0 6px 14px rgba(47,111,242,.4); }
+</style>
+<body>
+  <div class="room living" id="hk-living">
+    <div class="sideboard"></div>
+    <div class="tv"><div class="scr" id="hk-scr"></div></div>
+  </div>
+  <div class="room kitchen" id="hk-kitchen" data-layout-allow-occlusion>
+    <div class="tiles"></div><div class="window"></div><div class="counterEdge"></div>
+    <div id="hk-phone"></div>
+    <div class="bubble" id="hk-bubble"><small>SAID TO THE PHONE</small>“Add dentist Thursday at four.”</div>
+    <div class="time" id="hk-time">7:40 am · kitchen</div>
+  </div>
+  <div class="packet" id="hk-packet" data-layout-allow-overflow></div>
+  <div class="room" id="hk-clock" style="background:#e7ebf0" data-layout-allow-occlusion>
+    <div class="clocktitle" id="hk-ctitle"></div>
+    <div class="clockface" id="hk-face"><div class="dial"></div><div class="hand" id="hk-hand"></div><div class="hub"></div></div>
+  </div>
+</body>
+<script>
+const living = $('#hk-living'), kitchen = $('#hk-kitchen'), clockRoom = $('#hk-clock');
+const B = board($('#hk-scr'), 1464, 834);
+const appt = B.notes[0];
+const newLine = appt.addLine('Dentist – Thu 4pm');
+appt.el.insertBefore(newLine.el, appt.el.children[2]);
+gsap.set(newLine.txt, { clipPath: 'inset(0 100% 0 0)' }); gsap.set(newLine.dot, { opacity: 0 });
+const P = iphone($('#hk-phone'), 250, 120, 0.92);
+
+// opening: the wall, slowly pushing in on the Appointments note
+gsap.set(living, { scale: 1.0, transformOrigin: '30% 35%' });
+tl.fromTo(living, { scale: 1.0 }, { scale: 1.06, duration: at(1) - 0.3, ease: 'none' }, 0);
+const tTime = words(living, 'Tuesday, 7:40 am', 'position:absolute;left:120px;top:20px;font:800 54px Outfit,sans-serif;color:#18202c;letter-spacing:-.02em');
+wordsIn(tl, tTime, 0.3);
+
+// whip to the kitchen
+gsap.set(kitchen, { xPercent: 100 });
+tl.fromTo(kitchen, { xPercent: 100, filter: 'blur(18px)' }, { xPercent: 0, filter: 'blur(0px)', duration: 0.55, ease: 'power3.inOut' }, at(1) - 0.35);
+tl.fromTo(P.edge, { opacity: 0 }, { opacity: 1, duration: 0.4 }, at(1) + 0.2);
+tl.fromTo(P.dim, { opacity: 0 }, { opacity: 1, duration: 0.4 }, at(1) + 0.2);
+show(tl, $('#hk-bubble'), at(1) + 0.5, 0.7, { x: -40 });
+typeOn(tl, P.said, 'Add dentist Thursday at four', at(1) + 0.5, 1.4);
+
+// the sentence leaves the phone and lands on the wall
+tl.fromTo(kitchen, { xPercent: 0, filter: 'blur(0px)' }, { xPercent: -100, filter: 'blur(18px)', duration: 0.55, ease: 'power3.inOut', immediateRender: false }, at(2) + 0.6);
+const pk = $('#hk-packet');
+tl.fromTo(pk, { opacity: 0, x: 420, y: 520 }, { opacity: 1, duration: 0.1 }, at(2) + 0.5);
+tl.fromTo(pk, { x: 420, y: 520 }, { x: 640, y: 330, duration: 1.4, ease: 'power2.inOut', immediateRender: false }, at(2) + 0.6);
+tl.fromTo(pk, { opacity: 1 }, { opacity: 0, duration: 0.15, immediateRender: false }, at(2) + 2.0);
+tl.fromTo(newLine.dot, { opacity: 0 }, { opacity: 1, duration: 0.15 }, at(2) + 2.0);
+tl.fromTo(newLine.txt, { clipPath: 'inset(0 100% 0 0)' }, { clipPath: 'inset(0 0% 0 0)', duration: 1.3, ease: 'power1.inOut' }, at(2) + 2.05);
+tl.fromTo(living, { scale: 1.06 }, { scale: 1.55, duration: 2.2, ease: 'power2.inOut', immediateRender: false }, at(2) + 1.2);
+
+// no app, nobody typed
+const b1 = words(ROOT, 'No app opened.', '', 'big'); b1.style.top = '330px';
+const b2 = words(ROOT, 'Nobody typed.', '', 'big'); b2.style.top = '470px'; b2.style.color = '#e0662a';
+tl.fromTo(living, { filter: 'blur(0px) brightness(1)' }, { filter: 'blur(14px) brightness(1.12)', duration: 0.6, ease: 'power2.inOut' }, at(3) - 0.3);
+wordsIn(tl, b1, at(3)); wordsIn(tl, b2, at(3) + 1.5);
+out(tl, b1, end(3) + 0.9); out(tl, b2, end(3) + 0.9);
+
+// six systems around a clock
+gsap.set(clockRoom, { clipPath: 'circle(0px at 960px 560px)' });
+tl.fromTo(clockRoom, { clipPath: 'circle(0px at 960px 560px)' }, { clipPath: 'circle(1300px at 960px 560px)', duration: 0.8, ease: 'power3.in' }, at(4) - 0.6);
+const ct = words($('#hk-ctitle'), 'Six systems. One clockwork.');
+wordsIn(tl, ct, at(4) + 0.3);
+const SYS = [['Apple Siri', '#2f6ff2'], ['Amazon Alexa', '#0f9a92'], ['Meta\'s Muse', '#7350e6'], ['Cloudflare Worker', '#f2903c'], ['Workers AI', '#d2458e'], ['Durable Object', '#e0662a']];
+const face = $('#hk-face');
+SYS.forEach(([name, c], i) => {
+  const a = -Math.PI / 2 + i * Math.PI / 3, r = 380;
+  const ch = HT('div', { class: 'chip', css: `--c:${c};left:${Math.cos(a) * r}px;top:${Math.sin(a) * r * .78}px` }, face);
+  HT('i', {}, ch); HT('span', { text: name }, ch);
+  show(tl, ch, at(4) + 1.0 + i * 0.55, 0.6);
+});
+tl.fromTo($('#hk-hand'), { rotation: 0 }, { rotation: 360, duration: 4.4, ease: 'none' }, at(4) + 1.0);
+</script>

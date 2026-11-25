@@ -1,0 +1,46 @@
+<!--TIMING {"pre": 0.6, "gap": 0.7, "post": 1.8} -->
+<!--SFX [["whoosh-short", "0.1", 0.3], ["pop", "c(1)+0.2", 0.35], ["pop", "c(1)+2.6", 0.35], ["pop", "c(2)+0.2", 0.35], ["pop", "c(2)+2.4", 0.35], ["impact-bass-1", "c(3)+0.4", 0.3]] -->
+<style>
+#root { background: #e7ebf0; }
+#ck-svg { position: absolute; left: 0; top: 0; }
+</style>
+<body>
+  <svg id="ck-svg" width="1920" height="1080" viewBox="0 0 1920 1080"></svg>
+</body>
+<script>
+const svg = $('#ck-svg');
+const X0 = 140, X1 = 1780, AY = 560, lo = -1, hi = Math.log10(86400);
+const lx = s => X0 + (Math.log10(s) - lo) / (hi - lo) * (X1 - X0);
+const t0 = caption(ROOT, 'Every part runs to a clock', { top: 80, size: 72, bare: true });
+wordsIn(tl, t0, at(0));
+const axis = SV('line', { x1: X0, x2: X1, y1: AY, y2: AY, stroke: '#18202c', 'stroke-width': 4 }, svg);
+tl.fromTo(axis, { attr: { x2: X0 } }, { attr: { x2: X1 }, duration: 1.2, ease: 'power2.inOut' }, at(0) + 0.3);
+[[0.1, '0.1 s'], [1, '1 s'], [10, '10 s'], [60, '1 min'], [600, '10 min'], [3600, '1 h'], [86400, '1 day']].forEach(([s, t], i) => {
+  const g = SV('g', {}, svg);
+  SV('line', { x1: lx(s), x2: lx(s), y1: AY - 10, y2: AY + 10, stroke: '#5b6576', 'stroke-width': 3 }, g);
+  SV('text', { x: lx(s), y: AY + 50, 'text-anchor': s === 86400 ? 'end' : 'middle', style: "font:500 28px 'IBM Plex Mono';fill:#5b6576", text: t }, g);
+  tl.fromTo(g, { opacity: 0 }, { opacity: 1, duration: 0.3 }, at(0) + 0.4 + i * 0.12);
+});
+// earlier timers, shown quietly
+[[0.1, 'push'], [2, '2 s poll'], [30, '30 s ping'], [60, '60 s poll'], [150, '150 s Alexa']].forEach(([s, t], i) => {
+  const g = SV('g', { opacity: 0 }, svg);
+  SV('circle', { cx: lx(s), cy: AY, r: 9, fill: '#7d8798' }, g);
+  SV('text', { x: lx(s), y: AY - 30 - (i % 2) * 34, 'text-anchor': 'middle', style: "font:600 28px Inter;fill:#7d8798", text: t }, g);
+  tl.fromTo(g, { opacity: 0 }, { opacity: 1, duration: 0.3 }, at(0) + 1.2 + i * 0.1);
+});
+const mark = (s, val, desc, col, up, tier, endA, t) => {
+  const g = SV('g', {}, svg), x = lx(s);
+  const y = up ? AY - 170 - tier * 150 : AY + 160 + tier * 150;
+  SV('line', { x1: x, x2: x, y1: AY, y2: up ? y + 24 : y - 70, stroke: col, 'stroke-width': 3, 'stroke-dasharray': '4 6' }, g);
+  SV('circle', { cx: x, cy: AY, r: 16, fill: col, stroke: '#fff', 'stroke-width': 5 }, g);
+  const a = endA ? 'end' : 'start', tx = endA ? x + 8 : x - 8;
+  SV('text', { x: tx, y: y - 36, 'text-anchor': a, style: `font:800 58px Outfit;fill:${col}`, text: val }, g);
+  SV('text', { x: tx, y: y + 8, 'text-anchor': a, style: 'font:600 32px Inter;fill:#18202c', text: desc }, g);
+  tl.fromTo(g, { opacity: 0, y: up ? 20 : -20 }, { opacity: 1, y: 0, duration: 0.5, ease: 'expo.out' }, t);
+};
+mark(180, '3 min', 'answer a follow-up', COL.siri, true, 0, false, at(1) + 0.2);
+mark(300, '5 min', 'lighting update', COL.write, false, 0, false, at(1) + 2.6);
+mark(10800, '3 h', 'finished note peels off', COL.zCf, true, 1, true, at(2) + 0.2);
+mark(21600, '6 h', 'voice memory', COL.muse, false, 1, true, at(2) + 2.4);
+mark(86400, 'midnight', 'what is due today?', COL.ai, true, 0, true, at(3) + 0.4);
+</script>

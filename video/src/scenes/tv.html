@@ -1,0 +1,48 @@
+<!--TIMING {"pre": 0.4, "gap": 0.8, "post": 1.8} -->
+<!--SFX [["pop", "c(0)+2.4", 0.35], ["typing", "c(1)+0.9", 0.25], ["whoosh-short", "c(2)+1.6", 0.3], ["pop", "c(2)+2.4", 0.35], ["whoosh-short", "c(2)+4.0", 0.3], ["pop", "c(2)+4.6", 0.35]] -->
+<style>
+#root { background: #d9cab2; }
+#tv-cam { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; }
+</style>
+<body>
+  <div id="tv-cam"></div>
+</body>
+<script>
+const cam = $('#tv-cam');
+const B = board(cam, 1920, 1080);
+const [appt, school, rem] = [B.notes[0], B.notes[1], B.notes[2]];
+const nl = appt.addLine('Dentist – Thu 4pm');
+appt.el.insertBefore(nl.el, appt.el.children[2]);
+gsap.set(nl.txt, { clipPath: 'inset(0 100% 0 0)' }); gsap.set(nl.dot, { opacity: 0 });
+// date states start neutral and arrive in the third line
+const today = rem.lines[0], past = rem.lines[1], over = school.lines[2];
+gsap.set(today.hl, { scaleX: 0 }); rem.stamp.style.opacity = 0; school.stamp.style.opacity = 0;
+over.ul.style.opacity = 0; over.bang.style.opacity = 0; past.el.style.opacity = 1;
+const C = (cx, cy, z) => ({ x: 960 - cx * z, y: 540 - cy * z, scale: z });
+let cur = C(960, 540, 1);
+gsap.set(cam, Object.assign({ transformOrigin: '0 0' }, cur));
+const go = (to, t, d = 1.6, ease = 'power2.inOut') => { tl.fromTo(cam, Object.assign({}, cur), Object.assign({ duration: d, ease, immediateRender: false }, to), t); cur = to; };
+tl.fromTo(cam, { scale: 1.12, x: -115, y: -65 }, { scale: 1, x: 0, y: 0, duration: 1.0, ease: 'expo.out' }, 0);
+// find the group
+B.notes.forEach((n, i) => { if (i) tl.fromTo(n.el, { opacity: 1 }, { opacity: 0.35, duration: 0.6, immediateRender: false }, at(0) + 2.0); });
+const g = tag(ROOT, '## Appointments', COL.write, [360, 170], { size: 40 });
+show(tl, g, at(0) + 2.2, 0.5, { y: 20 });
+out(tl, g, at(1) - 0.2);
+go(C(360, 380, 2.1), at(1) - 0.3, 1.6);
+tl.fromTo(appt.el, { rotationY: 0, rotationX: 0 }, { rotationY: -16, rotationX: 6, duration: 1.2, ease: 'power2.inOut', transformPerspective: 1400 }, at(1) + 0.2);
+tl.fromTo(nl.dot, { opacity: 0 }, { opacity: 1, duration: 0.2 }, at(1) + 0.9);
+tl.fromTo(nl.txt, { clipPath: 'inset(0 100% 0 0)' }, { clipPath: 'inset(0 0% 0 0)', duration: 1.6, ease: 'power1.inOut' }, at(1) + 1.0);
+tl.fromTo(appt.el, { rotationY: -16, rotationX: 6 }, { rotationY: 0, rotationX: 0, duration: 1.2, ease: 'power2.inOut', transformPerspective: 1400, immediateRender: false }, at(1) + 3.0);
+// dates
+B.notes.forEach((n, i) => { if (i) tl.fromTo(n.el, { opacity: 0.35 }, { opacity: 1, duration: 0.5, immediateRender: false }, at(2) - 0.4); });
+go(C(1580, 390, 1.9), at(2) + 1.4, 1.2);
+tl.fromTo(today.hl, { scaleX: 0 }, { scaleX: 1, duration: 0.6, ease: 'power2.inOut' }, at(2) + 2.4);
+tl.fromTo(rem.stamp, { opacity: 0, scale: 1.8 }, { opacity: 0.9, scale: 1, duration: 0.3, ease: 'power4.in' }, at(2) + 2.9);
+go(C(972, 400, 1.9), at(2) + 3.8, 1.0);
+tl.fromTo([over.ul, over.bang], { opacity: 0 }, { opacity: 1, duration: 0.4 }, at(2) + 4.6);
+tl.fromTo(school.stamp, { opacity: 0, scale: 1.8 }, { opacity: 0.9, scale: 1, duration: 0.3, ease: 'power4.in' }, at(2) + 4.9);
+go(C(1580, 420, 1.9), at(2) + 5.8, 0.9);
+tl.fromTo(past.el, { opacity: 1 }, { opacity: 0.4, duration: 0.8 }, at(2) + 6.4);
+go(C(960, 540, 1), end(2) + 0.2, 1.4);
+const keys = [['Today', '#ffcf3b'], ['Overdue', '#d0261e'], ['Past', '#8a93a3']];
+</script>

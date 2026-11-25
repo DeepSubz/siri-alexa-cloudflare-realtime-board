@@ -1,0 +1,83 @@
+<!--TIMING {"pre": 0.6, "gap": 0.8, "post": 1.8} -->
+<!--SFX [["whoosh", "c(0)+0.1", 0.4], ["whoosh-short", "c(1)-0.3", 0.35], ["pop", "c(1)+3.2", 0.35], ["typing", "c(2)+0.5", 0.25], ["pop", "c(3)+1.0", 0.4], ["pop", "c(3)+3.4", 0.35]] -->
+<style>
+#root { background: #e7ebf0; }
+#ob-host { position: absolute; left: 0; top: 0; }
+.layer { position: absolute; inset: 0; background: #e7ebf0; }
+.core { position: absolute; left: 860px; top: 430px; width: 200px; height: 200px; border-radius: 34px; background: #f2903c; box-shadow: 0 24px 50px rgba(224,102,42,.35);
+  display: grid; place-items: center; text-align: center; font: 800 40px/1.05 Outfit, sans-serif; color: #fff; }
+.core small { display: block; font: 500 28px 'IBM Plex Mono', monospace; opacity: .9; margin-top: 6px; }
+.edge { position: absolute; width: 22px; height: 22px; margin: -11px 0 0 -11px; border-radius: 50%; background: #18202c; }
+.req { position: absolute; padding: 16px 26px; border-radius: 18px; background: #fff; font: 700 34px Outfit, sans-serif; box-shadow: 0 16px 32px rgba(20,24,32,.16); border: 4px solid var(--c); }
+.queue { position: absolute; left: 760px; top: 680px; width: 400px; text-align: center; font: 700 36px Outfit, sans-serif; color: #e0662a; }
+.diff { position: absolute; left: 160px; top: 200px; width: 1000px; background: #fff; border-radius: 26px; box-shadow: 0 30px 60px rgba(20,24,32,.16); padding: 30px 0; font: 500 38px/1.75 'IBM Plex Mono', monospace; }
+.diff div { padding: 0 40px; display: flex; justify-content: space-between; }
+.diff .same { color: #18202c; } .diff .same b { color: #8a93a3; font: 600 26px Inter, sans-serif; align-self: center; }
+.diff .add { background: #e6f6ec; color: #0f6a44; font-weight: 600; }
+.db { position: absolute; left: 1300px; top: 220px; width: 460px; }
+.cyl { position: relative; width: 300px; height: 280px; margin: 0 auto; }
+.cyl .b { position: absolute; left: 0; right: 0; top: 40px; bottom: 0; background: linear-gradient(90deg,#6c7586,#9aa3b2 40%,#6c7586); border-radius: 0 0 150px 150px / 0 0 40px 40px; }
+.cyl .t { position: absolute; left: 0; right: 0; top: 0; height: 80px; border-radius: 50%; background: #b9c0cc; border: 3px solid #8a93a3; }
+.cyl span { position: absolute; left: 0; right: 0; top: 130px; text-align: center; font: 800 40px Outfit; color: #fff; }
+.hist { margin-top: 30px; background: #fff; border-radius: 22px; padding: 22px 26px; box-shadow: 0 18px 36px rgba(20,24,32,.14); font: 600 30px Inter, sans-serif; }
+.hist small { display: block; font: 600 24px Inter; color: #5b6576; letter-spacing: .06em; margin-bottom: 10px; }
+.undo { display: inline-block; margin-top: 16px; padding: 12px 26px; border-radius: 999px; background: #18202c; color: #fff; font: 700 32px Outfit; }
+</style>
+<body>
+  <div id="ob-host"></div>
+  <div class="layer" id="ob-one" data-layout-allow-occlusion>
+    <div id="ob-edges"></div>
+    <div class="core">Board<small>id: “family”</small></div>
+    <div class="req" id="ob-r1" style="--c:#2f6ff2;left:200px;top:300px">Siri: add a line</div>
+    <div class="req" id="ob-r2" style="--c:#7350e6;left:1360px;top:300px">Muse: new file</div>
+    <div class="queue" id="ob-q">one at a time</div>
+  </div>
+  <div class="layer" id="ob-save" data-layout-allow-occlusion>
+    <div class="diff" id="ob-diff">
+      <div class="same">## Appointments <b>unchanged</b></div>
+      <div class="add">+ - [ ] Dentist – Thu 4pm</div>
+      <div class="same">- [x] Eye test – Mon 9am <b>unchanged</b></div>
+      <div class="same">- [ ] Vet – Sat 10:30am <b>unchanged</b></div>
+      <div class="same">## School <b>unchanged</b></div>
+      <div class="same">- [ ] Math packet – due Dec 9 <b>unchanged</b></div>
+    </div>
+    <div class="db" id="ob-db"><div class="cyl"><div class="b"></div><div class="t"></div><span>SQLite</span></div>
+      <div class="hist" id="ob-hist"><small>REMEMBERED</small>added “Dentist – Thu 4pm” · Appointments · just now<br><span class="undo">“undo” → removes it</span></div></div>
+  </div>
+</body>
+<script>
+const W = isoWorld($('#ob-host'), { prefix: 'ob' });
+W.setCam(tl, [14, 10, 3], 1.4, 0, 60);
+W.move(tl, 'doTop', 2.6, at(0), 2.2, 0, 160);
+const tg = tag(ROOT, 'Durable Object · “Board”', COL.write, [960, 210], { size: 52 });
+show(tl, tg, at(0) + 1.4, 0.7, { y: 24 });
+out(tl, tg, at(1) - 0.5);
+// exactly one, anywhere in the world
+const one = $('#ob-one'), edges = $('#ob-edges');
+gsap.set(one, { clipPath: 'circle(0px at 960px 530px)' });
+tl.fromTo(one, { clipPath: 'circle(0px at 960px 530px)' }, { clipPath: 'circle(1300px at 960px 530px)', duration: 0.9, ease: 'power3.in' }, at(1) - 0.5);
+const lines = SV('svg', { width: 1920, height: 1080, style: 'position:absolute;left:0;top:0' }, edges);
+for (let i = 0; i < 24; i++) {
+  const a = i / 24 * Math.PI * 2, rx = 760 - (i % 3) * 60, ry = 400 - (i % 3) * 40;
+  const x = 960 + Math.cos(a) * rx, y = 530 + Math.sin(a) * ry;
+  const ln = SV('line', { x1: x, y1: y, x2: 960, y2: 530, stroke: '#18202c', 'stroke-width': 2, opacity: .25 }, lines);
+  const d = HT('div', { class: 'edge', css: `left:${x}px;top:${y}px` }, edges);
+  tl.fromTo([d, ln], { opacity: 0 }, { opacity: (k) => k ? .25 : 1, duration: 0.3 }, at(1) + 0.2 + i * 0.05);
+}
+const cap = caption(ROOT, 'Every edge location reaches the same single object', { bottom: 60, size: 46 });
+wordsIn(tl, cap, at(1) + 1.2);
+show(tl, $('#ob-r1'), at(1) + 2.6, 0.5, { x: -60 }); show(tl, $('#ob-r2'), at(1) + 2.6, 0.5, { x: 60 });
+tl.fromTo('#ob-r1', { x: 0 }, { x: 420, y: 150, scale: .8, opacity: 0, duration: 0.8, ease: 'power2.in', immediateRender: false }, at(1) + 3.4);
+tl.fromTo('#ob-r2', { x: 0 }, { x: -420, y: 150, scale: .8, opacity: 0, duration: 0.8, ease: 'power2.in', immediateRender: false }, at(1) + 4.3);
+show(tl, $('#ob-q'), at(1) + 3.6, 0.5, { y: 20 });
+// one line changes, every other byte stays
+const save = $('#ob-save');
+gsap.set(save, { xPercent: 100 });
+tl.fromTo(save, { xPercent: 100 }, { xPercent: 0, duration: 0.7, ease: 'power3.inOut' }, at(2) - 0.5);
+const rows = save.querySelectorAll('.diff > div');
+rows.forEach((r, i) => tl.fromTo(r, { opacity: 0 }, { opacity: 1, duration: 0.25 }, at(2) + 0.1 + i * 0.12));
+tl.fromTo(rows[1], { clipPath: 'inset(0 100% 0 0)' }, { clipPath: 'inset(0 0% 0 0)', duration: 0.9, ease: 'power1.inOut' }, at(2) + 0.9);
+show(tl, $('#ob-db'), at(3) + 0.6, 0.7, { x: 60 });
+gsap.set('#ob-hist', { opacity: 0 });
+tl.fromTo('#ob-hist', { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.6, ease: 'expo.out' }, at(3) + 3.0);
+</script>

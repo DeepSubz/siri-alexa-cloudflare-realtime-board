@@ -1,0 +1,46 @@
+<!--TIMING {"pre": 0.6, "gap": 0.8, "post": 1.6} -->
+<!--SFX [["whoosh-short", "0.2", 0.3], ["pop", "c(1)+0.2", 0.3], ["pop", "c(1)+1.1", 0.3], ["pop", "c(1)+2.6", 0.3], ["pop", "c(1)+5.4", 0.3], ["whoosh", "c(2)+0.1", 0.35], ["sparkle", "c(2)+2.0", 0.3], ["typing", "c(3)+0.6", 0.25]] -->
+<style>
+#root { background: #e7ebf0; }
+#ai-host { position: absolute; left: 0; top: 0; }
+.ctx { position: absolute; left: 110px; width: 560px; padding: 20px 26px; border-radius: 20px; background: #fff; box-shadow: 0 18px 36px rgba(20,24,32,.16);
+  display: flex; align-items: center; gap: 18px; font: 700 36px Outfit, sans-serif; border-left: 10px solid var(--c); }
+.ctx small { font: 500 28px 'IBM Plex Mono', monospace; color: #5b6576; margin-left: auto; }
+.model { position: absolute; left: 1080px; top: 140px; width: 760px; padding: 30px 36px; border-radius: 26px; background: #18202c; color: #fff; box-shadow: 0 30px 60px rgba(20,24,32,.3); }
+.model .t { font: 800 58px Outfit, sans-serif; letter-spacing: -.02em; }
+.model .id { font: 500 28px 'IBM Plex Mono', monospace; color: #ff8fc4; margin: 6px 0 18px; }
+.model .row { display: flex; gap: 14px; flex-wrap: wrap; }
+.model .row span { padding: 10px 18px; border-radius: 14px; background: rgba(255,255,255,.1); font: 600 30px Inter, sans-serif; }
+</style>
+<body>
+  <div id="ai-host"></div>
+  <div class="ctx" id="ai-c1" style="top:240px;--c:#e0662a">Every group <small>## …</small></div>
+  <div class="ctx" id="ai-c2" style="top:360px;--c:#2f6ff2">Every task <small>- [ ] …</small></div>
+  <div class="ctx" id="ai-c3" style="top:480px;--c:#7350e6">Voice changes <small>last 6 h</small></div>
+  <div class="ctx" id="ai-c4" style="top:600px;--c:#a1792a">Open question <small>last 3 min</small></div>
+  <div class="model" id="ai-model"><div class="t">Workers AI</div><div class="id">@cf/meta/llama-3.3-70b-instruct-fp8-fast</div>
+    <div class="row"><span>Meta Llama 3.3</span><span>70B parameters</span><span>Cloudflare GPUs</span></div></div>
+</body>
+<script>
+const W = isoWorld($('#ai-host'), { prefix: 'ai' });
+W.hideFlows();
+W.draw(tl, 'siri', 0, 0.01); W.draw(tl, 'write', 0, 0.01);
+W.setCam(tl, [13, 12, 3], 1.5, 330, 80);
+W.focusOnly(tl, ['worker', 'do', 'sheet', 'ai', 'db'], ['write', 'ai', 'db'], 0, 0.01);
+W.pk(tl, 'write', at(0) + 0.6, 1.1, { reverse: true, r: 12 });
+const cap = caption(ROOT, 'The worker gathers context', { top: 70, size: 60 });
+wordsIn(tl, cap, at(0) + 0.1);
+out(tl, cap, at(2) - 0.5);
+const cs = ['#ai-c1', '#ai-c2', '#ai-c3', '#ai-c4'];
+[0.0, 0.9, 2.4, 5.2].forEach((dt, i) => { show(tl, $(cs[i]), at(1) + dt, 0.6, { x: -60 }); W.pk(tl, 'write', at(1) + dt - 0.2, 0.9, { reverse: true, r: 10 }); });
+cs.forEach(c => out(tl, $(c), at(2) - 0.4, 0.3));
+// up to the model
+W.move(tl, [8.6, 6.5, 2.8], 2.6, at(2) - 0.3, 1.8, -360, 140);
+W.draw(tl, 'ai', at(2) + 0.6, 0.9);
+W.pk(tl, 'ai', at(2) + 1.0, 1.0, { r: 12 });
+show(tl, $('#ai-model'), at(2) + 0.8, 0.8, { x: 80 });
+W.pk(tl, 'ai', at(3) + 1.2, 1.0, { r: 12, reverse: true });
+const res = card(ROOT, 1080, 560, 760, 'Strict JSON answer', COL.ai, '', { fs: 34 });
+show(tl, res.el, at(3) + 0.3, 0.6, { y: 40 });
+typeHTML(tl, res.bd, code('{\n  "action":   "add",\n  "group":    "Appointments",\n  "task":     "Dentist – Thu 4pm",\n  "question": ""\n}'), at(3) + 0.7, 2.4);
+</script>

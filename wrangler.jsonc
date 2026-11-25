@@ -1,0 +1,19 @@
+{
+  // Deploys to YOUR Cloudflare account (free plan is enough).
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "family-board",
+  "main": "src/worker.js",
+  "compatibility_date": "2025-09-01",
+  // the board page, the CSS fallback board and the starter task file
+  "assets": { "directory": "./public", "binding": "ASSETS" },
+  // Alexa (optional): paste your own skill ID here, see alexa/SETUP.md.
+  // ALEXA_USERS (optional): comma-separated Alexa user IDs allowed to use it; empty = anyone who can open your skill.
+  "vars": { "ALEXA_SKILL_ID": "", "ALEXA_USERS": "" },
+  // Workers AI understands spoken sentences (free daily allocation)
+  "ai": { "binding": "AI" },
+  // One Durable Object holds the task file and pushes every change to every open screen
+  "durable_objects": { "bindings": [{ "name": "BOARD", "class_name": "Board" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Board"] }]
+  // The write key is a secret named TASKS_TOKEN. Never put it in this file.
+  // npm run setup creates and stores one for you.
+}

@@ -1,0 +1,37 @@
+<!--TIMING {"pre": 0.6, "gap": 0.8, "post": 1.4} -->
+<!--SFX [["whoosh-short", "c(0)", 0.35], ["click-soft", "c(1)+1.2", 0.4], ["click-soft", "c(1)+1.5", 0.4], ["click-soft", "c(1)+1.8", 0.4], ["whoosh", "c(2)+0.8", 0.45], ["pop", "c(2)+2.3", 0.45], ["whoosh-cinematic", "e(3)-0.6", 0.25]] -->
+<style>
+#root { background: #e7ebf0; }
+#pu-host { position: absolute; left: 0; top: 0; }
+.nopoll { position: absolute; right: 140px; top: 120px; display: flex; gap: 30px; }
+.nopoll div { position: relative; width: 170px; height: 170px; border-radius: 40px; background: #fff; display: grid; place-items: center; font: 800 96px Outfit; color: #8a93a3; box-shadow: 0 18px 36px rgba(20,24,32,.16); }
+.nopoll div::after { content: ""; position: absolute; left: 18px; right: 18px; top: 50%; height: 12px; margin-top: -6px; background: #d0261e; border-radius: 6px; transform: rotate(-35deg); }
+</style>
+<body>
+  <div id="pu-host"></div>
+  <div class="nopoll" id="pu-np"><div>⟳</div><div>⏱</div></div>
+</body>
+<script>
+const W = isoWorld($('#pu-host'), { prefix: 'pu' });
+W.hideFlows(['pushTV', 'pushLaptop', 'pushPhone']);
+W.setCam(tl, 'doTop', 2.0, 0, 120);
+W.focusOnly(tl, ['do', 'sheet', 'tv', 'laptop', 'phone2', 'db'], ['pushTV', 'pushLaptop', 'pushPhone'], 0, 0.01);
+const t0 = caption(ROOT, 'Now the clockwork turns', { top: 70, size: 72 });
+wordsIn(tl, t0, at(0));
+out(tl, t0, at(1) - 0.3);
+W.move(tl, [26, 6, 3], 1.15, at(0) + 0.6, 2.4, 0, 40);
+['pushTV', 'pushLaptop', 'pushPhone'].forEach((id, i) => W.draw(tl, id, at(1) + 1.0 + i * 0.3, 1.1));
+const lab = tag(ROOT, 'Open WebSocket to every screen', COL.push, [960, 190], { size: 44, sub: '/api/live' });
+show(tl, lab, at(1) + 0.8, 0.6, { y: 20 });
+out(tl, lab, end(2) + 0.3);
+['pushTV', 'pushLaptop', 'pushPhone'].forEach(id => W.pk(tl, id, at(2) + 0.8, 1.5, { r: 20, color: COL.postit, stroke: COL.push, sw: 6 }));
+const cap = caption(ROOT, 'The whole file, to every screen, at once', { bottom: 70, size: 56 });
+wordsIn(tl, cap, at(2) + 0.6);
+out(tl, cap, at(3) - 0.3);
+show(tl, $('#pu-np'), at(3), 0.6, { y: 30 });
+const c2 = caption(ROOT, 'No polling. No refresh button.', { bottom: 70, size: 60 });
+wordsIn(tl, c2, at(3) + 0.1);
+// dive into the TV
+W.move(tl, 'tv', 4.2, end(3) - 0.6, 1.4, 0, 0, 'power3.in');
+out(tl, c2, end(3) - 0.6); out(tl, $('#pu-np'), end(3) - 0.6);
+</script>

@@ -1,0 +1,43 @@
+<!--TIMING {"pre": 0.6, "post": 1.6, "gaps": {"3": 0.9}} -->
+<!--SFX [["whoosh-short", "0.1", 0.35], ["ping", "c(1)-0.15", 0.25], ["pop", "c(3)+1.0", 0.3], ["pop", "c(3)+2.2", 0.3], ["pop", "c(3)+3.4", 0.3]] -->
+<style>
+#root { background: linear-gradient(#f1dfca 0 68%, #b8875a 68% 100%); }
+.tiles { position: absolute; left: 0; right: 0; top: 0; height: 68%; opacity: .5;
+  background: repeating-linear-gradient(0deg, transparent 0 118px, rgba(150,120,90,.25) 118px 120px), repeating-linear-gradient(90deg, transparent 0 238px, rgba(150,120,90,.25) 238px 240px); }
+.bub { position: absolute; max-width: 860px; padding: 30px 40px; border-radius: 40px; border-bottom-left-radius: 10px; font: 700 50px/1.18 Outfit, sans-serif; box-shadow: 0 24px 48px rgba(60,40,20,.2); }
+.bub small { display: block; font: 600 28px Inter, sans-serif; letter-spacing: .05em; margin-bottom: 10px; opacity: .7; }
+.me { background: #fff; color: #18202c; } .as { background: #18202c; color: #fff; }
+.loop { position: absolute; left: 860px; top: 170px; width: 940px; height: 760px; background: #fff; border-radius: 34px; box-shadow: 0 30px 60px rgba(60,40,20,.22); padding: 46px 56px; }
+.loop h3 { font: 800 54px Outfit; letter-spacing: -.02em; margin-bottom: 26px; }
+.st { display: flex; align-items: center; gap: 22px; font: 600 40px Inter; margin: 22px 0; }
+.st b { flex: none; width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; color: #fff; font: 800 32px Outfit; background: var(--c); }
+.st code { font: 500 34px 'IBM Plex Mono'; color: #5b6576; }
+</style>
+<body>
+  <div class="tiles"></div>
+  <div id="rp-phone"></div>
+  <div class="bub as" id="rp-b1" style="left:880px;top:290px"><small>SIRI</small>Added “Dentist – Thu 4pm” to Appointments. Anything else?</div>
+  <div class="bub me" id="rp-b2" style="left:880px;top:610px"><small>YOU</small>“No, that's all.”</div>
+  <div class="loop" id="rp-loop"><h3>A conversation, not a command</h3>
+    <div class="st" style="--c:#2f6ff2"><b>1</b>Ask <code>say</code></div>
+    <div class="st" style="--c:#e0662a"><b>2</b>Send the answer <code>{"text"}</code></div>
+    <div class="st" style="--c:#0f9a92"><b>3</b>Repeat until <code>finished: true</code></div>
+    <div class="st" style="--c:#7350e6"><b>↺</b>“undo” remembers the last change</div>
+  </div>
+</body>
+<script>
+const P = iphone($('#rp-phone'), 300, 110, 0.96);
+gsap.set([P.dim, P.edge], { opacity: 1 });
+const c0 = caption(ROOT, 'The phone answers out loud', { top: 90, x: 880, size: 68, bare: true });
+wordsIn(tl, c0, at(0));
+out(tl, c0, at(1) - 0.4);
+show(tl, P.panel, at(0) + 0.6, 0.6, { y: 40 });
+typeOn(tl, P.ask, 'Added “Dentist – Thu 4pm” to Appointments.', at(1), CUE[1].d * 0.7);
+show(tl, $('#rp-b1'), at(1), 0.6, { x: -40 });
+show(tl, $('#rp-b2'), at(2), 0.6, { x: -40 });
+typeOn(tl, P.said, "No, that's all", at(2), CUE[2].d);
+tl.fromTo(P.edge, { opacity: 1 }, { opacity: 0, duration: 0.6, immediateRender: false }, end(2) + 0.3);
+out(tl, $('#rp-b1'), at(3) - 0.4); out(tl, $('#rp-b2'), at(3) - 0.4);
+show(tl, $('#rp-loop'), at(3), 0.7, { x: 60 });
+$('#rp-loop').querySelectorAll('.st').forEach((s, i) => tl.fromTo(s, { opacity: 0, x: 30 }, { opacity: 1, x: 0, duration: 0.5, ease: 'expo.out' }, at(3) + 1.0 + i * 1.2));
+</script>

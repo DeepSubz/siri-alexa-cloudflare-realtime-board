@@ -1,0 +1,51 @@
+<!--TIMING {"pre": 0.6, "gap": 0.7, "post": 1.8, "gaps": {"2": 1.0, "3": 1.8, "4": 1.6}} -->
+<!--SFX [["impact-bass-1", "c(0)+0.2", 0.3], ["whoosh", "c(2)-0.4", 0.35], ["pop", "c(2)+1.6", 0.45], ["whoosh", "c(3)-0.4", 0.35], ["typing", "c(3)+0.4", 0.25], ["whoosh", "c(4)-0.4", 0.35], ["ping", "e(4)-1.2", 0.3]] -->
+<style>
+#root { background: #e7ebf0; }
+.panel { position: absolute; left: 160px; top: 230px; width: 1600px; height: 700px; background: #fff; border-radius: 34px; box-shadow: 0 30px 60px rgba(20,24,32,.16); padding: 56px 70px; }
+.panel h3 { font: 800 64px Outfit, sans-serif; letter-spacing: -.02em; display: flex; align-items: center; gap: 22px; margin-bottom: 40px; }
+.panel h3 i { width: 30px; height: 30px; border-radius: 50%; background: var(--c); }
+.in { font: 600 48px Inter, sans-serif; color: #18202c; padding: 26px 34px; border-radius: 20px; background: #f2f4f7; display: inline-block; position: relative; }
+.stamp { position: absolute; right: 120px; top: 300px; font: 800 64px Outfit, sans-serif; letter-spacing: .1em; color: #d0261e; border: 7px solid #d0261e; border-radius: 16px; padding: 10px 30px; }
+.ruler { display: grid; grid-template-columns: repeat(39, 1fr); gap: 4px; margin-top: 30px; }
+.ruler span { height: 64px; border-radius: 6px; background: #eef1f5; font: 600 34px 'IBM Plex Mono', monospace; display: grid; place-items: center; color: #18202c; }
+.ruler span.on { background: #ffe8a3; }
+.count { font: 700 52px 'IBM Plex Mono', monospace; margin-top: 30px; color: #e0662a; }
+.opt { font: 600 46px Inter, sans-serif; padding: 20px 30px; border-radius: 18px; background: #f2f4f7; margin: 14px 0; width: 760px; border: 4px solid transparent; }
+.ask { position: absolute; right: 80px; top: 330px; width: 640px; padding: 30px 36px; border-radius: 32px 32px 32px 8px; background: #18202c; color: #fff; font: 700 46px/1.2 Outfit, sans-serif; }
+</style>
+<body>
+  <div class="panel" id="gd-p1" style="--c:#d2458e"><h3><i></i>Money is refused</h3>
+    <div class="in" id="gd-money">“Pay the $240 card bill”</div><div class="stamp" id="gd-stamp">REFUSED</div></div>
+  <div class="panel" id="gd-p2" style="--c:#e0662a"><h3><i></i>Fits on a note: 39 characters</h3>
+    <div class="ruler" id="gd-ruler"></div><div class="count" id="gd-count">0 / 39</div></div>
+  <div class="panel" id="gd-p3" style="--c:#2f6ff2"><h3><i></i>Exactly one match, or ask</h3>
+    <div class="in" style="font-size:42px">“Cross off the dentist”</div>
+    <div class="opt" id="gd-o1">Dentist – Thu 4:15pm</div><div class="opt" id="gd-o2">Dentist – Mon 9am</div>
+    <div class="ask" id="gd-ask">Which one: “Dentist – Thu” or “Dentist – Mon”?</div></div>
+</body>
+<script>
+const t1 = caption(ROOT, 'The AI never gets the final word', { top: 70, size: 76, bare: true, w: 1800 });
+const t2 = caption(ROOT, 'Plain code checks every answer', { top: 70, size: 76, bare: true, color: '#e0662a', w: 1800 });
+[t1, t2].forEach(t => { t.style.left = '0'; t.style.right = '0'; t.style.maxWidth = 'none'; t.style.textAlign = 'center'; });
+t1.style.top = '420px'; t2.style.top = '540px';
+wordsIn(tl, t1, at(0)); wordsIn(tl, t2, at(1));
+out(tl, t1, at(2) - 0.5); out(tl, t2, at(2) - 0.5);
+const p1 = $('#gd-p1'), p2 = $('#gd-p2'), p3 = $('#gd-p3');
+const slideIn = (p, t) => tl.fromTo(p, { xPercent: 120, opacity: 1 }, { xPercent: 0, duration: 0.8, ease: 'expo.out' }, t);
+const slideOut = (p, t) => tl.fromTo(p, { xPercent: 0 }, { xPercent: -130, duration: 0.45, ease: 'power3.in', immediateRender: false }, t);
+gsap.set([p1, p2, p3], { xPercent: 120 });
+slideIn(p1, at(2) - 0.4);
+tl.fromTo('#gd-stamp', { opacity: 0, scale: 2.2, rotation: -14 }, { opacity: 1, scale: 1, rotation: -8, duration: 0.35, ease: 'power4.in' }, at(2) + 1.3);
+tl.fromTo('#gd-money', { opacity: 1 }, { opacity: 0.4, duration: 0.3 }, at(2) + 1.6);
+slideOut(p1, at(3) - 0.5); slideIn(p2, at(3) - 0.4);
+const ruler = $('#gd-ruler'), txt = 'Dentist – Thu 4pm';
+const cells = []; for (let i = 0; i < 39; i++) cells.push(HT('span', {}, ruler));
+const o = { n: 0 }, cnt = $('#gd-count');
+tl.fromTo(o, { n: 0 }, { n: txt.length, duration: 1.6, ease: 'none', onUpdate: () => {
+  const n = Math.round(o.n); cells.forEach((c, i) => { c.textContent = i < n ? txt[i] : ''; c.className = i < n ? 'on' : ''; }); cnt.textContent = `${n} / 39 ✓`; } }, at(3) + 0.4);
+slideOut(p2, at(4) - 0.5); slideIn(p3, at(4) - 0.4);
+tl.fromTo(['#gd-o1', '#gd-o2'], { borderColor: 'rgba(47,111,242,0)' }, { borderColor: 'rgba(47,111,242,1)', duration: 0.3 }, at(4) + 2.4);
+show(tl, $('#gd-ask'), e(4) - 1.5, 0.6, { x: 40 });
+function e(i) { return end(i); }
+</script>
