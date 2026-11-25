@@ -18,6 +18,8 @@ The visible project is a family post-it board. **The real subject is the archite
 
 ![The whole architecture: Apple, Amazon and an AI agent feed a Cloudflare Worker, Workers AI and a Durable Object, which pushes to every screen](docs/images/architecture-map.jpg)
 
+![Live push: the Durable Object pushes the file to the TV, laptop and phone at the same moment](docs/images/live-push.gif)
+
 ---
 
 ## Table of contents
